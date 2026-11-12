@@ -73,39 +73,98 @@ private let readCases: [ReadCase] = [
     allowed: false),
   ReadCase(
     name: "named grant", reader: stranger,
-    grants: [ReadGrant(reader: .principal(stranger.id), expiresAt: nil, isRevoked: false)],
+    grants: [
+      ReadGrant(reader: .principal(stranger.id), target: .global, expiresAt: nil, isRevoked: false)
+    ],
     allowed: true),
   ReadCase(
     name: "family grant", reader: stranger,
-    grants: [ReadGrant(reader: .family("C"), expiresAt: nil, isRevoked: false)], allowed: true),
+    grants: [ReadGrant(reader: .family("C"), target: .global, expiresAt: nil, isRevoked: false)],
+    allowed: true),
   ReadCase(
     name: "grant for another principal", reader: stranger,
-    grants: [ReadGrant(reader: .principal(alphaPeer.id), expiresAt: nil, isRevoked: false)],
+    grants: [
+      ReadGrant(reader: .principal(alphaPeer.id), target: .global, expiresAt: nil, isRevoked: false)
+    ],
     allowed: false),
   ReadCase(
     name: "grant for another family", reader: stranger,
-    grants: [ReadGrant(reader: .family("A"), expiresAt: nil, isRevoked: false)], allowed: false),
+    grants: [ReadGrant(reader: .family("A"), target: .global, expiresAt: nil, isRevoked: false)],
+    allowed: false),
   ReadCase(
     name: "grant not yet expired", reader: stranger,
-    grants: [ReadGrant(reader: .principal(stranger.id), expiresAt: future, isRevoked: false)],
+    grants: [
+      ReadGrant(
+        reader: .principal(stranger.id), target: .global, expiresAt: future, isRevoked: false)
+    ],
     allowed: true),
   ReadCase(
     name: "expired grant", reader: stranger,
-    grants: [ReadGrant(reader: .principal(stranger.id), expiresAt: past, isRevoked: false)],
+    grants: [
+      ReadGrant(reader: .principal(stranger.id), target: .global, expiresAt: past, isRevoked: false)
+    ],
     allowed: false),
   ReadCase(
     name: "grant expiring exactly now", reader: stranger,
-    grants: [ReadGrant(reader: .principal(stranger.id), expiresAt: now, isRevoked: false)],
+    grants: [
+      ReadGrant(reader: .principal(stranger.id), target: .global, expiresAt: now, isRevoked: false)
+    ],
     allowed: false),
   ReadCase(
     name: "revoked grant", reader: stranger,
-    grants: [ReadGrant(reader: .principal(stranger.id), expiresAt: nil, isRevoked: true)],
+    grants: [
+      ReadGrant(reader: .principal(stranger.id), target: .global, expiresAt: nil, isRevoked: true)
+    ],
     allowed: false),
+  ReadCase(
+    name: "family target: the sender's family", reader: stranger,
+    grants: [
+      ReadGrant(
+        reader: .principal(stranger.id), target: .family("A"), expiresAt: nil, isRevoked: false)
+    ], allowed: true),
+  ReadCase(
+    name: "family target: the recipient's family is not the sender's family", reader: stranger,
+    grants: [
+      ReadGrant(
+        reader: .principal(stranger.id), target: .family("B"), expiresAt: nil, isRevoked: false)
+    ], allowed: false),
+  ReadCase(
+    name: "family target: an unrelated family", reader: stranger,
+    grants: [
+      ReadGrant(
+        reader: .principal(stranger.id), target: .family("C"), expiresAt: nil, isRevoked: false)
+    ], allowed: false),
+  ReadCase(
+    name: "principal target: the sender", reader: stranger,
+    grants: [
+      ReadGrant(
+        reader: .principal(stranger.id), target: .principal(alpha.id), expiresAt: nil,
+        isRevoked: false)
+    ], allowed: true),
+  ReadCase(
+    name: "principal target: a recipient", reader: stranger,
+    grants: [
+      ReadGrant(
+        reader: .principal(stranger.id), target: .principal(beta.id), expiresAt: nil,
+        isRevoked: false)
+    ], allowed: true),
+  ReadCase(
+    name: "principal target: someone the message does not concern", reader: stranger,
+    grants: [
+      ReadGrant(
+        reader: .principal(stranger.id), target: .principal(alphaPeer.id), expiresAt: nil,
+        isRevoked: false)
+    ], allowed: false),
+  ReadCase(
+    name: "a family reader with a family target of another family", reader: stranger,
+    grants: [
+      ReadGrant(reader: .family("C"), target: .family("B"), expiresAt: nil, isRevoked: false)
+    ], allowed: false),
   ReadCase(
     name: "revoked grant next to a valid one", reader: stranger,
     grants: [
-      ReadGrant(reader: .principal(stranger.id), expiresAt: nil, isRevoked: true),
-      ReadGrant(reader: .family("C"), expiresAt: nil, isRevoked: false),
+      ReadGrant(reader: .principal(stranger.id), target: .global, expiresAt: nil, isRevoked: true),
+      ReadGrant(reader: .family("C"), target: .global, expiresAt: nil, isRevoked: false),
     ], allowed: true),
 ]
 
@@ -127,8 +186,24 @@ private let readCases: [ReadCase] = [
       "\(scenario.name)")
   }
 
+  @Test func test_familyTargetGrant_doesNotOpenAMessageOfAnotherFamily() {
+    let otherFamilyMessage = MessageMeta(
+      sender: stranger.id, recipients: [stranger.id], family: "C")
+    let grants = [
+      ReadGrant(
+        reader: .principal(alpha.id), target: .family("B"), expiresAt: nil, isRevoked: false)
+    ]
+
+    #expect(
+      !AccessPolicy.canRead(
+        principal: alpha, meta: otherFamilyMessage, grants: grants, now: now),
+      "a grant whose target is family B gives nothing on a message of family C")
+  }
+
   @Test func test_readGrant_neverChangesWhoMaySend() {
-    let grants = [ReadGrant(reader: .principal(stranger.id), expiresAt: nil, isRevoked: false)]
+    let grants = [
+      ReadGrant(reader: .principal(stranger.id), target: .global, expiresAt: nil, isRevoked: false)
+    ]
 
     #expect(
       AccessPolicy.canRead(principal: stranger, meta: meta, grants: grants, now: now),

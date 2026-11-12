@@ -64,14 +64,17 @@ private struct RightsFixture {
     let agent = fixture.alphaToken
     let rights = fixture.rights
     let grant = try rights.addReadGrant(
-      reader: .family("C"), expiresAt: nil, ownerToken: fixture.owner)
+      reader: .family("C"), target: .global, expiresAt: nil, ownerToken: fixture.owner)
 
     let attempts: [(String, () throws -> Void)] = [
       ("allowSending", { try rights.allowSending(from: "A", to: "B", ownerToken: agent) }),
       ("removeSendRule", { try rights.removeSendRule(from: "A", to: "B", ownerToken: agent) }),
       (
         "addReadGrant",
-        { _ = try rights.addReadGrant(reader: .family("A"), expiresAt: nil, ownerToken: agent) }
+        {
+          _ = try rights.addReadGrant(
+            reader: .family("A"), target: .global, expiresAt: nil, ownerToken: agent)
+        }
       ),
       ("revokeReadGrant", { try rights.revokeReadGrant(id: grant, ownerToken: agent) }),
       ("listSendRules", { _ = try rights.sendRules(ownerToken: agent) }),
@@ -102,11 +105,20 @@ private struct RightsFixture {
     }
     #expect(throws: RightsError.invalidRule) {
       _ = try fixture.rights.addReadGrant(
-        reader: .family(" "), expiresAt: nil, ownerToken: fixture.owner)
+        reader: .family(" "), target: .global, expiresAt: nil, ownerToken: fixture.owner)
+    }
+    #expect(throws: RightsError.invalidRule) {
+      _ = try fixture.rights.addReadGrant(
+        reader: .family("C"), target: .family(" "), expiresAt: nil, ownerToken: fixture.owner)
+    }
+    #expect(throws: RightsError.invalidRule) {
+      _ = try fixture.rights.addReadGrant(
+        reader: .family("C"), target: .principal(PrincipalID("")), expiresAt: nil,
+        ownerToken: fixture.owner)
     }
     #expect(throws: RightsError.expiryInThePast) {
       _ = try fixture.rights.addReadGrant(
-        reader: .family("C"), expiresAt: past, ownerToken: fixture.owner)
+        reader: .family("C"), target: .global, expiresAt: past, ownerToken: fixture.owner)
     }
     #expect(throws: RightsError.unknownGrant(999)) {
       try fixture.rights.revokeReadGrant(id: 999, ownerToken: fixture.owner)
@@ -183,7 +195,8 @@ private struct RightsFixture {
     let fixture = try RightsFixture()
     let expiry = fixture.clock.instant.addingTimeInterval(600)
     let id = try fixture.rights.addReadGrant(
-      reader: .principal(fixture.stranger.id), expiresAt: expiry, ownerToken: fixture.owner)
+      reader: .principal(fixture.stranger.id), target: .global, expiresAt: expiry,
+      ownerToken: fixture.owner)
 
     #expect(try fixture.rights.canRead(token: fixture.strangerToken, meta: fixture.meta), "granted")
     #expect(
@@ -206,7 +219,7 @@ private struct RightsFixture {
   @Test func test_familyGrant_reachesEveryPrincipalOfThatFamilyAndNeverAllowsSending() throws {
     let fixture = try RightsFixture()
     _ = try fixture.rights.addReadGrant(
-      reader: .family("C"), expiresAt: nil, ownerToken: fixture.owner)
+      reader: .family("C"), target: .global, expiresAt: nil, ownerToken: fixture.owner)
 
     #expect(try fixture.rights.canRead(token: fixture.strangerToken, meta: fixture.meta), "reads")
     #expect(
@@ -221,9 +234,10 @@ private struct RightsFixture {
     try fixture.rights.allowSending(from: "A", to: "B", ownerToken: fixture.owner)
     try fixture.rights.allowSending(from: "B", to: "C", ownerToken: fixture.owner)
     _ = try fixture.rights.addReadGrant(
-      reader: .principal(fixture.alpha.id), expiresAt: nil, ownerToken: fixture.owner)
+      reader: .principal(fixture.alpha.id), target: .global, expiresAt: nil,
+      ownerToken: fixture.owner)
     _ = try fixture.rights.addReadGrant(
-      reader: .family("C"), expiresAt: nil, ownerToken: fixture.owner)
+      reader: .family("C"), target: .global, expiresAt: nil, ownerToken: fixture.owner)
 
     let rights = try fixture.rights.effectiveRights(token: fixture.alphaToken)
 
@@ -231,7 +245,8 @@ private struct RightsFixture {
     #expect(rights.canSendToFamilies == ["A", "B"], "its own family and the rule targets from it")
     #expect(
       rights.readGrants == [
-        ReadGrant(reader: .principal(fixture.alpha.id), expiresAt: nil, isRevoked: false)
+        ReadGrant(
+          reader: .principal(fixture.alpha.id), target: .global, expiresAt: nil, isRevoked: false)
       ],
       "only grants that name it or its family; none of the others")
   }
@@ -258,12 +273,37 @@ private struct RightsFixture {
 
   // MARK: - Owner listings
 
+  @Test func test_readGrant_targetLimitsWhichMessagesItOpens() throws {
+    let fixture = try RightsFixture()
+    let familyCMessage = MessageMeta(
+      sender: fixture.stranger.id, recipients: [fixture.stranger.id], family: "C")
+    _ = try fixture.rights.addReadGrant(
+      reader: .principal(fixture.alpha.id), target: .family("B"), expiresAt: nil,
+      ownerToken: fixture.owner)
+
+    #expect(
+      !(try fixture.rights.canRead(token: fixture.alphaToken, meta: familyCMessage)),
+      "the grant names family B, so a message of family C stays closed")
+
+    _ = try fixture.rights.addReadGrant(
+      reader: .principal(fixture.alpha.id), target: .principal(fixture.stranger.id),
+      expiresAt: nil, ownerToken: fixture.owner)
+
+    #expect(
+      try fixture.rights.canRead(token: fixture.alphaToken, meta: familyCMessage),
+      "a grant naming the stranger opens the stranger's mail")
+    let listed = try fixture.rights.readGrants(ownerToken: fixture.owner).map(\.grant.target)
+    #expect(
+      listed == [.family("B"), .principal(fixture.stranger.id)],
+      "the owner sees the stored targets")
+  }
+
   @Test func test_ownerListings_showRulesAndGrants() throws {
     let fixture = try RightsFixture()
     try fixture.rights.allowSending(from: "A", to: "B", ownerToken: fixture.owner)
     try fixture.rights.allowSending(from: "A", to: "B", ownerToken: fixture.owner)
     let id = try fixture.rights.addReadGrant(
-      reader: .family("C"), expiresAt: nil, ownerToken: fixture.owner)
+      reader: .family("C"), target: .global, expiresAt: nil, ownerToken: fixture.owner)
     try fixture.rights.revokeReadGrant(id: id, ownerToken: fixture.owner)
 
     #expect(
