@@ -7,6 +7,11 @@ public enum SettingsCatalogError: Error, Equatable {
   case unknownScope(key: String, scope: String)
   case duplicateKey(String)
   case defaultInvalid(key: String, reason: SettingValueError)
+  case minimumAboveMaximum(key: String)
+  case noScopes(key: String)
+  case enumWithoutValues(key: String)
+  case rangeOnNonNumericType(key: String)
+  case valuesOnNonEnumType(key: String)
 }
 
 /// The validated set of settings. A catalog that loads has no duplicate key and every default is
@@ -23,6 +28,7 @@ public struct SettingsCatalog: Equatable, Sendable {
       guard seen.insert(definition.key).inserted else {
         throw SettingsCatalogError.duplicateKey(definition.key)
       }
+      try Self.checkShape(of: definition)
       do {
         try definition.validate(definition.defaultValue)
       } catch let reason as SettingValueError {
@@ -30,6 +36,28 @@ public struct SettingsCatalog: Equatable, Sendable {
       }
     }
     self.definitions = definitions.sorted { $0.key < $1.key }
+  }
+
+  /// Refuses a definition that cannot describe a real setting, before its default is checked.
+  private static func checkShape(of definition: SettingDefinition) throws {
+    let key = definition.key
+    guard !definition.scopes.isEmpty else { throw SettingsCatalogError.noScopes(key: key) }
+    let numeric =
+      definition.type == .integer || definition.type == .duration
+      || definition.type == .bytes
+    if let range = definition.range {
+      guard numeric else { throw SettingsCatalogError.rangeOnNonNumericType(key: key) }
+      if let low = range.minimum, let high = range.maximum, low > high {
+        throw SettingsCatalogError.minimumAboveMaximum(key: key)
+      }
+    }
+    if definition.type == .enumeration {
+      guard let values = definition.allowedValues, !values.isEmpty else {
+        throw SettingsCatalogError.enumWithoutValues(key: key)
+      }
+    } else if definition.allowedValues != nil {
+      throw SettingsCatalogError.valuesOnNonEnumType(key: key)
+    }
   }
 
   public func definition(for key: String) -> SettingDefinition? {
