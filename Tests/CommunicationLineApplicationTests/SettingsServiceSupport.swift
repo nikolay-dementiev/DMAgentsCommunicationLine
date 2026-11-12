@@ -32,6 +32,22 @@ final class SpySettingsStore: SettingsStore {
   func auditRecords(key: String) throws -> [SettingAuditRecord] { [] }
 }
 
+/// Answers every authentication with a canned result and remembers what was presented.
+final class StubAuthenticator: Authenticating {
+  var result: Result<AuthenticatedActor, IdentityError> = .success(.owner)
+  private(set) var presented: [String] = []
+
+  func authenticate(_ token: CredentialToken) throws -> AuthenticatedActor {
+    presented.append(token.encoded)
+    return try result.get()
+  }
+}
+
+let sampleToken = CredentialToken(bytes: [UInt8](repeating: 1, count: 32))!
+
+let agentPrincipal = Principal(
+  id: PrincipalID("p"), family: "f", role: .agent, displayName: "agent p", isEnabled: true)
+
 let demoCatalogJSON = Data(
   #"""
   {"settings":[
