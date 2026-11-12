@@ -17,11 +17,11 @@ import Testing
     try SQLiteStore.open(at: url, busyTimeoutMilliseconds: 1000, migrations: migrations)
   }
 
-  @Test(arguments: [mode_t(0o022), mode_t(0o000), mode_t(0o077)])
+  @Test(arguments: [mode_t(0o022), mode_t(0o000), mode_t(0o077), mode_t(0o277)])
   func test_open_freshStore_createsPrivateFolderAndFilesWhateverTheUmask(mask: mode_t) throws {
+    let scratch = try TemporaryDirectory()
     let previous = umask(mask)
     defer { umask(previous) }
-    let scratch = try TemporaryDirectory()
     let database = scratch.storePath
     let store = try open(database)
 
@@ -74,6 +74,39 @@ import Testing
     try FileManager.default.createSymbolicLink(at: scratch.storePath, withDestinationURL: target)
 
     #expect(throws: StoreError.unexpectedFileType(path: scratch.storePath.path)) {
+      _ = try open(scratch.storePath)
+    }
+  }
+
+  @Test func test_open_negativeBusyTimeout_isRejected() throws {
+    let scratch = try TemporaryDirectory()
+
+    #expect(throws: StoreError.invalidBusyTimeout(-1)) {
+      _ = try SQLiteStore.open(
+        at: scratch.storePath, busyTimeoutMilliseconds: -1, migrations: migrations)
+    }
+  }
+
+  @Test func test_open_existingWriteAheadLogWiderThanOwnerOnly_failsAndLeavesItAlone() throws {
+    let scratch = try TemporaryDirectory()
+    _ = try open(scratch.storePath)
+    let log = URL(fileURLWithPath: scratch.storePath.path + "-wal")
+    try FileManager.default.setAttributes([.posixPermissions: 0o666], ofItemAtPath: log.path)
+
+    #expect(
+      throws: StoreError.insecurePermissions(path: log.path, mode: 0o666, maximumMode: 0o600)
+    ) {
+      _ = try open(scratch.storePath)
+    }
+    #expect(try mode(of: log) == 0o666, "the log was not silently changed")
+  }
+
+  @Test func test_open_folderPathIsARegularFile_isRejected() throws {
+    let scratch = try TemporaryDirectory()
+    let folder = scratch.storePath.deletingLastPathComponent()
+    #expect(FileManager.default.createFile(atPath: folder.path, contents: nil), "file created")
+
+    #expect(throws: StoreError.unexpectedFileType(path: folder.path)) {
       _ = try open(scratch.storePath)
     }
   }

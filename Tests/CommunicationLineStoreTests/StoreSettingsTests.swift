@@ -116,4 +116,19 @@ import Testing
       _ = try settings.storedValues(key: "demo.limit", family: nil, principal: nil)
     }
   }
+
+  @Test func test_auditRecords_familyAddressWithPreviousValue_roundTripsSubjectAndOldValue() throws
+  {
+    let (settings, scratch) = try makeSUT()
+    defer { withExtendedLifetime(scratch) {} }
+    let family = SettingAddress(key: "demo.limit", scope: .family, subject: "ops")
+    _ = try settings.apply(.text("a"), to: family, actor: "owner", at: instant)
+    _ = try settings.apply(.boolean(true), to: family, actor: "owner", at: instant)
+
+    let records = try settings.auditRecords(key: "demo.limit")
+
+    #expect(records.map(\.address) == [family, family], "the subject survives the round trip")
+    #expect(records.map(\.oldValue) == [nil, .text("a")], "the old value survives the round trip")
+    #expect(records.map(\.newValue) == [.text("a"), .boolean(true)], "the new values are kept")
+  }
 }

@@ -112,4 +112,18 @@ import Testing
         actor: "owner")
     }
   }
+
+  @Test func test_auditTrail_knownKey_isReadFromTheStore() throws {
+    let (service, _) = try makeSUT()
+
+    #expect(try service.auditTrail(of: "demo.limit").isEmpty, "the store's records are returned")
+  }
+
+  @Test func test_auditTrail_unknownKey_isRejected() throws {
+    let (service, _) = try makeSUT()
+
+    #expect(throws: SettingsServiceError.unknownKey("demo.missing")) {
+      _ = try service.auditTrail(of: "demo.missing")
+    }
+  }
 }

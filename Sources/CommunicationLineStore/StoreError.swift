@@ -18,6 +18,8 @@ public enum StoreError: Error, Equatable, CustomStringConvertible {
   case posix(operation: String, path: String, code: Int32)
   /// A stored setting value is not valid JSON for a setting value.
   case invalidStoredValue(key: String)
+  /// A time is not finite or does not fit the stored millisecond count.
+  case invalidTimestamp
   /// A bundled resource is missing.
   case missingResource(String)
   /// A SQLite call failed.
@@ -45,6 +47,8 @@ public enum StoreError: Error, Equatable, CustomStringConvertible {
       return "\(operation) failed for \(path): \(String(cString: strerror(code))) (errno \(code))"
     case .invalidStoredValue(let key):
       return "the stored value of setting \(key) cannot be read; the database may be damaged"
+    case .invalidTimestamp:
+      return "the time of the change cannot be stored as milliseconds since 1970"
     case .missingResource(let name):
       return "the bundled resource \(name) is missing from the package"
     case .sqlite(let operation, let code, let message):
