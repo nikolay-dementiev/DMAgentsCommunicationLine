@@ -60,6 +60,9 @@ import Testing
 
     #expect(TokenDigest(hex: digest.hex) == digest, "hex round trip")
     #expect(TokenDigest(hex: "zz") == nil, "not hex")
+    #expect(
+      TokenDigest(hex: "+" + String(repeating: "a", count: 63)) == nil,
+      "a sign is not a hex digit")
     #expect(TokenDigest(hex: String(digest.hex.dropLast(2))) == nil, "too short")
     #expect(TokenDigest(bytes: [1, 2, 3]) == nil, "wrong length")
   }
