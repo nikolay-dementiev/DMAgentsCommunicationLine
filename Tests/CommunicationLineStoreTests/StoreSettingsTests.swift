@@ -16,11 +16,11 @@ import Testing
 
   private let limit = SettingAddress(key: "demo.limit", scope: .global, subject: nil)
 
-  @Test func test_schema_versionOneCreatesTheSettingsTables() throws {
+  @Test func test_schema_createsTheSettingsTables() throws {
     let (_, scratch) = try makeSUT()
     let raw = try RawDatabase(path: scratch.storePath)
 
-    #expect(try raw.integer("PRAGMA user_version") == 1, "schema version 1")
+    #expect(try raw.integer("PRAGMA user_version") == SchemaMigrations.all.count, "latest schema")
     #expect(try raw.tableExists("settings_values"), "stored values table")
     #expect(try raw.tableExists("settings_audit"), "audit table")
   }

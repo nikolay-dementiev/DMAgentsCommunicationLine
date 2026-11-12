@@ -28,6 +28,10 @@ public enum StoreError: Error, Equatable, CustomStringConvertible {
   case sqlite(operation: String, code: Int32, message: String)
   /// A SQLite result had a type the store does not read.
   case unsupportedColumnType(Int32)
+  /// A stored identity or rights row is not in a form the store reads.
+  case invalidStoredIdentity(String)
+  /// The system could not supply random bytes.
+  case randomUnavailable(status: Int32)
 
   public var description: String {
     switch self {
@@ -59,6 +63,11 @@ public enum StoreError: Error, Equatable, CustomStringConvertible {
       return "SQLite failed during \(operation) (code \(code)): \(message)"
     case .unsupportedColumnType(let type):
       return "SQLite returned a column of unsupported type \(type)"
+    case .invalidStoredIdentity(let detail):
+      return
+        "a stored identity or rights row cannot be read (\(detail)); the database may be damaged"
+    case .randomUnavailable(let status):
+      return "the system could not supply random bytes (status \(status))"
     }
   }
 }
