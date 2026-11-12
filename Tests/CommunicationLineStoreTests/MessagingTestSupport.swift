@@ -3,11 +3,26 @@ import CommunicationLineDomain
 import CommunicationLineStore
 import Foundation
 
-/// Records which recipients were signalled, in order.
+/// Records every signal and every wait, and never parks: a wait returns `.timedOut` at once.
 final class RecordingArrival: MailArrival {
   private(set) var signals: [Set<PrincipalID>] = []
+  private(set) var waitTimeouts: [TimeInterval] = []
+  /// Runs inside `signal`, so a test can look at the database at the moment of the signal.
+  var onSignal: (() -> Void)?
 
-  func signal(recipients: Set<PrincipalID>) { signals.append(recipients) }
+  func ticket(for recipient: PrincipalID) -> ArrivalTicket { ArrivalTicket(value: 0) }
+
+  func signal(recipients: Set<PrincipalID>) {
+    signals.append(recipients)
+    onSignal?()
+  }
+
+  func wait(for recipient: PrincipalID, since ticket: ArrivalTicket, timeout: TimeInterval)
+    -> ArrivalResult
+  {
+    waitTimeouts.append(timeout)
+    return .timedOut
+  }
 }
 
 /// Runs a closure between the authentication of a caller and the transaction of a send, which is the
@@ -28,6 +43,10 @@ final class HookedMessageStore: MessageStore {
 
   func message(id: MessageID) throws -> StoredMessage? { try base.message(id: id) }
 
+  func hasPending(for recipient: PrincipalID) throws -> Bool {
+    try base.hasPending(for: recipient)
+  }
+
   func inbox(for recipient: PrincipalID, after cursor: InboxCursor?, limit: Int) throws
     -> InboxPage
   { try base.inbox(for: recipient, after: cursor, limit: limit) }
@@ -45,7 +64,7 @@ struct MessagingFixture {
   let settings: SettingsService
   let messages: MessageService
   let store: HookedMessageStore
-  let arrival = RecordingArrival()
+  let recorder = RecordingArrival()
   let clock = MutableClock(Date(timeIntervalSince1970: 1_800_000_000))
   let alpha: Principal
   let alphaToken: CredentialToken
@@ -58,7 +77,8 @@ struct MessagingFixture {
 
   var owner: CredentialToken { identity.owner }
 
-  init() throws {
+  /// `arrival` replaces the recording one, for tests that need a waiter to really park.
+  init(arrival: (any MailArrival)? = nil) throws {
     identity = try IdentityFixture()
     let service = identity.service
     let owner = identity.owner
@@ -84,7 +104,7 @@ struct MessagingFixture {
     messages = MessageService(
       store: store, rights: SQLiteRightsStore(store: identity.store), authenticator: service,
       settings: settings,
-      identifiers: SequentialIdentifiers(), clock: clock, arrival: arrival)
+      identifiers: SequentialIdentifiers(), clock: clock, arrival: arrival ?? recorder)
   }
 
   func count(_ table: String) throws -> Int {

@@ -48,7 +48,7 @@ import Testing
     }
     #expect(try fixture.count("messages") == 0, "no message, although one recipient was allowed")
     #expect(try fixture.count("deliveries") == 0, "no delivery for the allowed recipient")
-    #expect(fixture.arrival.signals.isEmpty, "nobody is signalled about a refused send")
+    #expect(fixture.recorder.signals.isEmpty, "nobody is signalled about a refused send")
   }
 
   @Test func test_send_acrossFamilies_followsTheOwnerRuleInThatDirectionOnly() throws {
@@ -164,6 +164,7 @@ import Testing
     _ = try fixture.messages.send(
       token: fixture.alphaToken, to: [fixture.alphaPeer.id], subject: "s", body: "b")
 
-    #expect(fixture.arrival.signals == [[fixture.alphaPeer.id]], "one signal naming the recipients")
+    #expect(
+      fixture.recorder.signals == [[fixture.alphaPeer.id]], "one signal naming the recipients")
   }
 }
