@@ -36,6 +36,29 @@ import Testing
     }
   }
 
+  @Test(arguments: [mode_t(0o277), mode_t(0o177)])
+  func test_open_manyProcessesStartingAtOnceUnderStrictUmask_allSucceedOnAFreshFile(
+    mask: mode_t
+  ) throws {
+    for _ in 0..<20 {
+      let scratch = try TemporaryDirectory()
+      let path = scratch.storePath
+      let lock = NSLock()
+      nonisolated(unsafe) var failures: [String] = []
+      ProcessUmask.withMask(mask) {
+        DispatchQueue.concurrentPerform(iterations: 8) { _ in
+          do {
+            _ = try SQLiteStore.open(
+              at: path, busyTimeoutMilliseconds: 10_000, migrations: SchemaMigrations.all)
+          } catch {
+            lock.withLock { failures.append("\(error)") }
+          }
+        }
+      }
+      #expect(failures.isEmpty, "an opener that loses the creation race still succeeds: \(failures)")
+    }
+  }
+
   @Test func test_open_migrationWithTwoStatementsInOneString_isRejectedNotHalfApplied() throws {
     let scratch = try TemporaryDirectory()
     let migrations = [

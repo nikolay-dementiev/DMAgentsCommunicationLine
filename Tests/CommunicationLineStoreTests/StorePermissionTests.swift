@@ -20,10 +20,8 @@ import Testing
   @Test(arguments: [mode_t(0o022), mode_t(0o000), mode_t(0o077), mode_t(0o277)])
   func test_open_freshStore_createsPrivateFolderAndFilesWhateverTheUmask(mask: mode_t) throws {
     let scratch = try TemporaryDirectory()
-    let previous = umask(mask)
-    defer { umask(previous) }
     let database = scratch.storePath
-    let store = try open(database)
+    let store = try ProcessUmask.withMask(mask) { try open(database) }
 
     #expect(try mode(of: database.deletingLastPathComponent()) == 0o700, "folder is owner-only")
     #expect(try mode(of: database) == 0o600, "database file is owner read and write only")

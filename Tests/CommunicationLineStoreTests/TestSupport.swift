@@ -2,14 +2,38 @@ import Foundation
 import SQLite3
 import Testing
 
+/// The umask belongs to the whole process, while suites run in parallel. A test that changes it
+/// and a test that creates a scratch folder at the same time would otherwise race: the folder
+/// gets a mode the test did not expect and the next write into it is refused.
+enum ProcessUmask {
+  private static let lock = NSLock()
+
+  static func withMask<T>(_ mask: mode_t, _ body: () throws -> T) rethrows -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    let previous = umask(mask)
+    defer { umask(previous) }
+    return try body()
+  }
+
+  static func whileUnchanged<T>(_ body: () throws -> T) rethrows -> T {
+    lock.lock()
+    defer { lock.unlock() }
+    return try body()
+  }
+}
+
 /// A scratch folder that is removed when the value goes out of scope.
 final class TemporaryDirectory {
   let url: URL
 
   init() throws {
-    url = FileManager.default.temporaryDirectory
+    let location = FileManager.default.temporaryDirectory
       .appending(path: "communicationline-tests-\(UUID().uuidString)", directoryHint: .isDirectory)
-    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    try ProcessUmask.whileUnchanged {
+      try FileManager.default.createDirectory(at: location, withIntermediateDirectories: true)
+    }
+    url = location
   }
 
   deinit {
