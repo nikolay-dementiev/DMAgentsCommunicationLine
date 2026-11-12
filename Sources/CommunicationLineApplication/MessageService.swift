@@ -5,6 +5,7 @@ import Foundation
 /// given.
 public struct MessageService {
   private let store: any MessageStore
+  private let rights: any RightsStore
   private let authenticator: any Authenticating
   private let settings: any SettingsReading
   private let identifiers: any IdentifierSource
@@ -12,10 +13,12 @@ public struct MessageService {
   private let arrival: any MailArrival
 
   public init(
-    store: any MessageStore, authenticator: any Authenticating, settings: any SettingsReading,
+    store: any MessageStore, rights: any RightsStore, authenticator: any Authenticating,
+    settings: any SettingsReading,
     identifiers: any IdentifierSource, clock: any WallClock, arrival: any MailArrival
   ) {
     self.store = store
+    self.rights = rights
     self.authenticator = authenticator
     self.settings = settings
     self.identifiers = identifiers
@@ -55,6 +58,39 @@ public struct MessageService {
     }
     arrival.signal(recipients: Set(distinct))
     return message.id
+  }
+
+  // MARK: - Inbox, read, acknowledge
+
+  /// The caller's pending mail, oldest first, one catalog-sized page at a time.
+  public func inbox(token: CredentialToken, after cursor: InboxCursor?) throws -> InboxPage {
+    let recipient = try requirePrincipal(token)
+    let limit = try setting("messaging.page_size", token: token)
+    return try store.inbox(for: recipient.id, after: cursor, limit: limit)
+  }
+
+  /// The message, if the caller may read it. Reading never acknowledges. The access decision uses
+  /// only what the store holds about the message, never anything the caller supplies.
+  public func read(token: CredentialToken, messageID: MessageID) throws -> StoredMessage {
+    let reader = try requirePrincipal(token)
+    guard let message = try store.message(id: messageID) else {
+      throw MessagingError.messageUnavailable(messageID)
+    }
+    let meta = MessageMeta(
+      sender: message.sender, recipients: Set(message.recipients), family: message.family)
+    let allowed = AccessPolicy.canRead(
+      principal: reader, meta: meta, grants: try rights.readGrants().map(\.grant),
+      now: clock.now())
+    guard allowed else { throw MessagingError.messageUnavailable(messageID) }
+    return message
+  }
+
+  /// Acknowledges the caller's own delivery. Repeating it changes nothing.
+  public func acknowledge(token: CredentialToken, messageID: MessageID) throws {
+    let recipient = try requirePrincipal(token)
+    let outcome = try store.acknowledge(
+      messageID: messageID, recipient: recipient.id, at: clock.now())
+    if outcome == .notRecipient { throw MessagingError.messageUnavailable(messageID) }
   }
 
   // MARK: - Helpers
