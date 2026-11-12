@@ -71,3 +71,16 @@ Principals, credentials and owner-managed rights. All of it is new and open unti
 
 Disabling a principal clears `enabled` and sets `revoked_at_ms` on all its credentials in one transaction.
 Enabling it again sets `enabled` and, in the same transaction, revokes any credential of the principal that is still live; the old credentials stay revoked, so it needs a new one. Issuing a credential checks `enabled` and inserts in one transaction, so a credential cannot be issued to a principal that is being disabled. Replacing the owner credential is a compare-and-swap in one transaction: it succeeds only if the live owner credential is the one the caller authenticated with (or none exists, for the first one).
+
+## Version 3
+
+Messages and their deliveries. All of it is new and open until the v0.1 release.
+
+| Table | Columns | Rules |
+|---|---|---|
+| `messages` | `seq` (integer primary key, the delivery order), `id` (unique, random), `sender` (foreign key to `principals`), `subject`, `body`, `created_at_ms` | A message is never rewritten (trigger). A message with a pending delivery cannot be deleted (trigger, independent of the foreign-key pragma). |
+| `deliveries` | `message_seq` (foreign key), `recipient` (foreign key), `state` (`pending` or `acknowledged`), `acknowledged_at_ms` (nullable); primary key (`message_seq`, `recipient`) | One row per recipient, created with the message in one transaction. `acknowledged_at_ms` is set exactly when the state is `acknowledged`. |
+
+Triggers on `deliveries`: a pending delivery cannot be deleted; a pending delivery can only change to `acknowledged`
+(its message and recipient never change); an acknowledged delivery cannot be changed. An acknowledged delivery may be
+deleted, which is how retention will reclaim it. Index `deliveries_by_recipient` serves the inbox.

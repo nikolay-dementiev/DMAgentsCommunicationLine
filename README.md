@@ -22,6 +22,7 @@ entry point.
 - [Database schema](docs/schema.md)
 - [Settings catalog](docs/settings.md)
 - [Identity and access rules](docs/access.md)
+- [Messaging](docs/messaging.md)
 
 ## Build and test
 
