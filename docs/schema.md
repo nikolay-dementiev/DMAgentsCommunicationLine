@@ -81,6 +81,10 @@ Messages and their deliveries. All of it is new and open until the v0.1 release.
 | `messages` | `seq` (integer primary key, the delivery order), `id` (unique, random), `sender` (foreign key to `principals`), `subject`, `body`, `created_at_ms` | A message is never rewritten (trigger). A message with a pending delivery cannot be deleted (trigger, independent of the foreign-key pragma). |
 | `deliveries` | `message_seq` (foreign key), `recipient` (foreign key), `state` (`pending` or `acknowledged`), `acknowledged_at_ms` (nullable); primary key (`message_seq`, `recipient`) | One row per recipient, created with the message in one transaction. `acknowledged_at_ms` is set exactly when the state is `acknowledged`. |
 
+Inserts that would replace an existing message or delivery (`INSERT OR REPLACE`, which SQLite runs without firing the
+delete and update triggers) are refused by `BEFORE INSERT` triggers. These triggers guard against the API, a future bug
+and accidental statements; they are not a defence against someone who holds the database file and can drop them.
+
 Triggers on `deliveries`: a pending delivery cannot be deleted; a pending delivery can only change to `acknowledged`
 (its message and recipient never change); an acknowledged delivery cannot be changed. An acknowledged delivery may be
 deleted, which is how retention will reclaim it. Index `deliveries_by_recipient` serves the inbox.

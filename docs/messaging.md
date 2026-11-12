@@ -56,3 +56,18 @@ not end the wait early.
 
 `MailArrival` is the interface; v0.1 of this layer ships `InProcessMailArrival`, which wakes waiters in the same
 process. The cross-process implementation replaces it behind the same interface.
+
+## Threads
+
+One `SQLiteStore` may be shared by several threads, for example a parked waiter and a sender in one process. Every
+statement and every whole transaction runs as one unit, so another thread never sees the uncommitted rows of an open
+transaction. Separate processes use separate connections and rely on `BEGIN IMMEDIATE` and the busy timeout.
+
+## Known limits of this layer
+
+- There is no quota on pending mail, no cap on recipients per message and no owner operation to expire pending mail:
+  pending mail is never deleted, so a misbehaving sender can grow the database. Quotas and the disk budget belong to the
+  retention and health step.
+- The send error distinguishes an unknown recipient from a refused one, so a leaked principal id can be probed.
+- A parked wait authenticates once, when it starts.
+- Family names are compared as Swift strings and stored as given; only the owner creates them.
