@@ -14,8 +14,3 @@ public protocol SettingsStore {
   /// The audit records of `key`, oldest first.
   func auditRecords(key: String) throws -> [SettingAuditRecord]
 }
-
-/// Where the settings catalog comes from; the adapter reads the shipped defaults resource.
-public protocol SettingsCatalogSource {
-  func load() throws -> SettingsCatalog
-}

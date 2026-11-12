@@ -1,9 +1,8 @@
-import CommunicationLineApplication
 import CommunicationLineDomain
 import Foundation
 
 /// Reads the settings catalog from the defaults resource shipped in this package.
-public struct BundledSettingsCatalogSource: SettingsCatalogSource {
+public struct BundledSettingsCatalogSource {
   private let bundle: Bundle
   private let resourceName: String
 

@@ -24,7 +24,7 @@ entry point.
 
 ## Build and test
 
-Requires macOS 26 and the Swift 6.4 toolchain. There are no package dependencies.
+Requires macOS 26 and a Swift 6.2 or newer toolchain (developed with 6.4). There are no package dependencies.
 
 ```
 swift build -Xswiftc -warnings-as-errors

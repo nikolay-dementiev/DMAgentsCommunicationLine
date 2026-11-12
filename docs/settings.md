@@ -10,7 +10,7 @@ catalog and never repeats them. The catalog is new and open until the first rele
 
 | Field | Meaning |
 |---|---|
-| `key` | dotted lower-case name, unique |
+| `key` | dotted name, unique; by convention lower case with underscores inside a part |
 | `type` | `integer`, `duration`, `bytes`, `boolean` or `enum` |
 | `unit` | optional unit text of a numeric value (`seconds`, `days`, `bytes`, ...) |
 | `default` | integer, boolean or string, valid for the entry's own type and range |
@@ -19,8 +19,8 @@ catalog and never repeats them. The catalog is new and open until the first rele
 | `scopes` | the scopes that may hold a value: `global`, `family`, `principal` |
 | `description` | what the setting controls |
 
-Loading refuses an unknown type or scope, a duplicate key, and a default that is not valid for its own
-definition.
+Loading refuses text that is not a valid catalog resource (`SettingsCatalogError.malformed`), an unknown type
+or scope, a duplicate key, and a default that is not valid for its own definition.
 
 ## Effective value
 
