@@ -65,9 +65,9 @@ Principals, credentials and owner-managed rights. All of it is new and open unti
 | Table | Columns | Rules |
 |---|---|---|
 | `principals` | `id` (primary key), `family`, `role` (`head` or `agent`), `display_name`, `enabled` (0 or 1), `created_at_ms` | A trigger refuses any update of `id`, `family` or `role`. Only `enabled` changes, and only through an owner operation. |
-| `credentials` | `id`, `digest` (unique, 64 hex characters), `kind` (`owner` or `principal`), `principal_id` (foreign key), `issued_at_ms`, `revoked_at_ms` | `kind = 'owner'` exactly when `principal_id` is null. The table holds the SHA-256 digest of a token, never the token. |
+| `credentials` | `id`, `digest` (unique, 64 hex characters), `kind` (`owner` or `principal`), `principal_id` (foreign key), `issued_at_ms`, `revoked_at_ms` | `kind = 'owner'` exactly when `principal_id` is null. A unique partial index allows at most one live (not revoked) owner credential. The table holds the SHA-256 digest of a token, never the token. |
 | `read_grants` | `id`, `reader_kind` (`principal` or `family`), `reader`, `expires_at_ms` (nullable), `created_at_ms`, `revoked_at_ms` (nullable) | A grant is valid while not revoked and before its expiry instant. |
 | `send_rules` | `from_family`, `to_family` (primary key together), `created_at_ms` | A rule lets the first family send to the second, in that direction only. A family cannot have a rule to itself. |
 
 Disabling a principal clears `enabled` and sets `revoked_at_ms` on all its credentials in one transaction.
-Enabling it again clears only `enabled`; the old credentials stay revoked, so it needs a new one.
+Enabling it again sets `enabled` and, in the same transaction, revokes any credential of the principal that is still live; the old credentials stay revoked, so it needs a new one. Issuing a credential checks `enabled` and inserts in one transaction, so a credential cannot be issued to a principal that is being disabled. Replacing the owner credential is a compare-and-swap in one transaction: it succeeds only if the live owner credential is the one the caller authenticated with (or none exists, for the first one).

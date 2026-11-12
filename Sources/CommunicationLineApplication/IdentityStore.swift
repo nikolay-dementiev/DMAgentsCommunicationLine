@@ -50,15 +50,26 @@ public struct StoredCredential: Equatable, Sendable {
 public protocol IdentityStore {
   func insertPrincipal(_ principal: Principal, at instant: Date) throws
   func principal(id: PrincipalID) throws -> Principal?
-  func enable(_ id: PrincipalID) throws
+
+  /// Sets the enabled flag and revokes every credential of the principal that is still live, in one
+  /// transaction: enabling never revives a credential.
+  func enable(_ id: PrincipalID, at instant: Date) throws
 
   /// Clears the enabled flag and revokes every credential of the principal in one transaction.
   func disable(_ id: PrincipalID, at instant: Date) throws
 
-  func insertCredential(digest: TokenDigest, kind: StoredCredentialKind, at instant: Date) throws
+  /// Stores a credential for an enabled principal. The check and the insert are one transaction.
+  ///
+  /// - Throws: ``IdentityError/principalDisabled`` when the principal is not enabled.
+  func insertPrincipalCredential(digest: TokenDigest, for id: PrincipalID, at instant: Date) throws
   func credential(digest: TokenDigest) throws -> StoredCredential?
   func hasActiveOwnerCredential() throws -> Bool
 
-  /// Revokes every owner credential and stores the new one in one transaction.
-  func replaceOwnerCredential(with digest: TokenDigest, at instant: Date) throws
+  /// Replaces the owner credential in one transaction. `expectedCurrent` is the digest of the owner
+  /// credential the caller authenticated with, or nil when the caller expects that none exists.
+  ///
+  /// - Throws: ``IdentityError/ownerCredentialRequired`` when the live owner credential is not the
+  ///   expected one, for example because another caller replaced it first.
+  func replaceOwnerCredential(
+    expectedCurrent: TokenDigest?, with digest: TokenDigest, at instant: Date) throws
 }

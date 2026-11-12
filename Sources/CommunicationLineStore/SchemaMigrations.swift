@@ -70,6 +70,10 @@ public enum SchemaMigrations {
       """,
       "CREATE INDEX credentials_by_principal ON credentials (principal_id)",
       """
+      CREATE UNIQUE INDEX credentials_one_active_owner ON credentials (kind)
+      WHERE kind = 'owner' AND revoked_at_ms IS NULL
+      """,
+      """
       CREATE TABLE read_grants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         reader_kind TEXT NOT NULL CHECK (reader_kind IN ('principal', 'family')),

@@ -58,7 +58,7 @@ public struct TokenDigest: Equatable, Sendable {
   }
 
   public init?(hex: String) {
-    guard hex.count == Self.byteCount * 2 else { return nil }
+    guard hex.count == Self.byteCount * 2, hex.allSatisfy(\.isHexDigit) else { return nil }
     var parsed: [UInt8] = []
     var index = hex.startIndex
     while index < hex.endIndex {

@@ -37,9 +37,15 @@ public final class SQLiteIdentityStore: IdentityStore {
       isEnabled: enabled == 1)
   }
 
-  public func enable(_ id: PrincipalID) throws {
-    try store.database.execute(
-      "UPDATE principals SET enabled = 1 WHERE id = ?1", [.text(id.rawValue)])
+  public func enable(_ id: PrincipalID, at instant: Date) throws {
+    let milliseconds = try StoreTime.milliseconds(of: instant)
+    try store.database.transaction {
+      try store.database.execute(
+        "UPDATE credentials SET revoked_at_ms = ?2 WHERE principal_id = ?1 AND revoked_at_ms IS NULL",
+        [.text(id.rawValue), .integer(milliseconds)])
+      try store.database.execute(
+        "UPDATE principals SET enabled = 1 WHERE id = ?1", [.text(id.rawValue)])
+    }
   }
 
   public func disable(_ id: PrincipalID, at instant: Date) throws {
@@ -53,10 +59,21 @@ public final class SQLiteIdentityStore: IdentityStore {
     }
   }
 
-  public func insertCredential(
-    digest: TokenDigest, kind: StoredCredentialKind, at instant: Date
+  public func insertPrincipalCredential(
+    digest: TokenDigest, for id: PrincipalID, at instant: Date
   ) throws {
-    try Self.insert(digest: digest, kind: kind, at: instant, into: store.database)
+    let milliseconds = try StoreTime.milliseconds(of: instant)
+    try store.database.transaction {
+      let enabled = try store.database.rows(
+        "SELECT enabled FROM principals WHERE id = ?1", [.text(id.rawValue)])
+      guard case .integer(1)? = enabled.first?.first else { throw IdentityError.principalDisabled }
+      try store.database.execute(
+        """
+        INSERT INTO credentials (digest, kind, principal_id, issued_at_ms)
+        VALUES (?1, 'principal', ?2, ?3)
+        """,
+        [.text(digest.hex), .text(id.rawValue), .integer(milliseconds)])
+    }
   }
 
   public func credential(digest: TokenDigest) throws -> StoredCredential? {
@@ -85,35 +102,26 @@ public final class SQLiteIdentityStore: IdentityStore {
     return count > 0
   }
 
-  public func replaceOwnerCredential(with digest: TokenDigest, at instant: Date) throws {
+  public func replaceOwnerCredential(
+    expectedCurrent: TokenDigest?, with digest: TokenDigest, at instant: Date
+  ) throws {
     let milliseconds = try StoreTime.milliseconds(of: instant)
     try store.database.transaction {
+      let live = try store.database.rows(
+        "SELECT digest FROM credentials WHERE kind = 'owner' AND revoked_at_ms IS NULL")
+      let liveDigests = live.compactMap { row -> String? in
+        if case .text(let hex) = row[0] { return hex }
+        return nil
+      }
+      guard liveDigests == (expectedCurrent.map { [$0.hex] } ?? []) else {
+        throw IdentityError.ownerCredentialRequired
+      }
       try store.database.execute(
         "UPDATE credentials SET revoked_at_ms = ?1 WHERE kind = 'owner' AND revoked_at_ms IS NULL",
         [.integer(milliseconds)])
-      try Self.insert(digest: digest, kind: .owner, at: instant, into: store.database)
+      try store.database.execute(
+        "INSERT INTO credentials (digest, kind, principal_id, issued_at_ms) VALUES (?1, 'owner', NULL, ?2)",
+        [.text(digest.hex), .integer(milliseconds)])
     }
-  }
-
-  private static func insert(
-    digest: TokenDigest, kind: StoredCredentialKind, at instant: Date, into database: SQLiteDatabase
-  ) throws {
-    let kindName: String
-    let principal: SQLiteValue
-    switch kind {
-    case .owner:
-      kindName = "owner"
-      principal = .null
-    case .principal(let id):
-      kindName = "principal"
-      principal = .text(id.rawValue)
-    }
-    try database.execute(
-      "INSERT INTO credentials (digest, kind, principal_id, issued_at_ms) VALUES (?1, ?2, ?3, ?4)",
-      [
-        .text(digest.hex), .text(kindName), principal,
-        .integer(try StoreTime.milliseconds(of: instant)),
-      ]
-    )
   }
 }

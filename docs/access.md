@@ -14,7 +14,8 @@ protect against a process that can read another agent's token or edit the databa
 - `authenticate(token)` returns the owner or the principal. Three distinct errors say why it did not:
   `unknownToken`, `principalDisabled` and `tokenRevoked`. Digests are compared in constant time.
 - The first owner credential is issued when none exists. Replacing it needs the current owner token; the old
-  one is revoked.
+  one is revoked. Two callers that race for the first credential, or rotate with the same token, cannot both
+  succeed: one of them is refused with `ownerCredentialRequired`.
 - Disabling a principal takes effect in the same transaction and revokes its credentials. Enabling it again
   never revives them: a new credential is required.
 - Printing a token value shows `CredentialToken(redacted)`.
@@ -49,6 +50,9 @@ A message is described by its sender, its original recipients and the sender's f
 
 A disabled principal reads nothing. A grant expires at its expiry instant: reading at that instant is
 refused. Observation does not acknowledge mail.
+
+`canRead` and the policy trust the message description they are given. The code that sends and reads messages
+must build it from the stored message, never from a request.
 
 Limit of v0.1: a `head` sees messages whose sender is in its family. A message sent into its family from
 another family is visible to that head only as a recipient or through a grant.

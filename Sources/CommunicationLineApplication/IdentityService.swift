@@ -49,12 +49,15 @@ public struct IdentityService: Authenticating {
   /// Issues the first owner credential, or replaces the current one when `current` is the owner's
   /// valid token. The old owner token stops working.
   public func issueOwnerCredential(replacing current: CredentialToken?) throws -> CredentialToken {
+    var expected: TokenDigest?
     if try store.hasActiveOwnerCredential() {
       guard let current else { throw IdentityError.ownerCredentialRequired }
       try authenticateOwner(current)
+      expected = current.digest
     }
     let token = try newToken()
-    try store.replaceOwnerCredential(with: token.digest, at: clock.now())
+    try store.replaceOwnerCredential(
+      expectedCurrent: expected, with: token.digest, at: clock.now())
     return token
   }
 
@@ -83,7 +86,7 @@ public struct IdentityService: Authenticating {
     let principal = try existingPrincipal(id)
     guard principal.isEnabled else { throw IdentityError.principalDisabled }
     let token = try newToken()
-    try store.insertCredential(digest: token.digest, kind: .principal(id), at: clock.now())
+    try store.insertPrincipalCredential(digest: token.digest, for: id, at: clock.now())
     return token
   }
 
@@ -98,7 +101,7 @@ public struct IdentityService: Authenticating {
   public func enablePrincipal(_ id: PrincipalID, ownerToken: CredentialToken) throws {
     try authenticateOwner(ownerToken)
     _ = try existingPrincipal(id)
-    try store.enable(id)
+    try store.enable(id, at: clock.now())
   }
 
   // MARK: - Helpers
