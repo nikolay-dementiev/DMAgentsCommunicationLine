@@ -1,3 +1,5 @@
+import Darwin
+
 /// Every failure of the store is one of these cases, so callers can react and messages stay actionable.
 public enum StoreError: Error, Equatable, CustomStringConvertible {
   /// The database was written by a newer version of the code and is left untouched.
@@ -8,6 +10,12 @@ public enum StoreError: Error, Equatable, CustomStringConvertible {
   case invalidBusyTimeout(Int)
   /// The file system did not accept write-ahead logging.
   case walUnavailable(actual: String)
+  /// A folder or file is readable or writable by someone other than its owner. Nothing was changed.
+  case insecurePermissions(path: String, mode: Int, maximumMode: Int)
+  /// A path that must be a plain folder or file is something else, such as a symbolic link.
+  case unexpectedFileType(path: String)
+  /// A file system call failed.
+  case posix(operation: String, path: String, code: Int32)
   /// A SQLite call failed.
   case sqlite(operation: String, code: Int32, message: String)
   /// A SQLite result had a type the store does not read.
@@ -24,6 +32,13 @@ public enum StoreError: Error, Equatable, CustomStringConvertible {
       return "the busy timeout must be zero or more milliseconds, got \(value)"
     case .walUnavailable(let actual):
       return "write-ahead logging is not available on this file system (journal mode is \(actual))"
+    case .insecurePermissions(let path, let mode, let maximumMode):
+      return
+        "\(path) has mode \(String(mode, radix: 8)) but must not allow more than \(String(maximumMode, radix: 8)); it was not changed, fix it with: chmod \(String(maximumMode, radix: 8)) '\(path)'"
+    case .unexpectedFileType(let path):
+      return "\(path) must be a plain folder or file, not a link or another kind of entry"
+    case .posix(let operation, let path, let code):
+      return "\(operation) failed for \(path): \(String(cString: strerror(code))) (errno \(code))"
     case .sqlite(let operation, let code, let message):
       return "SQLite failed during \(operation) (code \(code)): \(message)"
     case .unsupportedColumnType(let type):

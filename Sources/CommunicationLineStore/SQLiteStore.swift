@@ -31,10 +31,9 @@ public final class SQLiteStore {
     guard busyTimeoutMilliseconds >= 0 else {
       throw StoreError.invalidBusyTimeout(busyTimeoutMilliseconds)
     }
-    let folder = path.deletingLastPathComponent()
-    if !FileManager.default.fileExists(atPath: folder.path) {
-      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
-    }
+    try StoreFilesystem.prepareFolder(path.deletingLastPathComponent())
+    try StoreFilesystem.prepareDatabaseFile(path)
+    try StoreFilesystem.verifySidecars(of: path)
     let database = try SQLiteDatabase(path: path.path)
     try database.setBusyTimeout(milliseconds: busyTimeoutMilliseconds)
     try database.execute("PRAGMA foreign_keys = ON")
@@ -52,6 +51,7 @@ public final class SQLiteStore {
         try database.execute("PRAGMA user_version = \(migration.version)")
       }
     }
+    try StoreFilesystem.verifySidecars(of: path)
     return SQLiteStore(database: database)
   }
 
