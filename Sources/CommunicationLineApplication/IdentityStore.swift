@@ -7,6 +7,7 @@ public enum IdentityError: Error, Equatable {
   case tokenRevoked
   case principalDisabled
   case ownerCredentialRequired
+  case principalCredentialRequired
   case unknownPrincipal(PrincipalID)
   case invalidName(field: String)
   case invalidRandomOutput
