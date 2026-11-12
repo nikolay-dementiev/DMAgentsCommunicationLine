@@ -26,7 +26,8 @@ import Testing
   }
 
   @Test func test_apply_firstChange_storesTheValueAndAnAuditRecordWithNoOldValue() throws {
-    let (settings, _) = try makeSUT()
+    let (settings, scratch) = try makeSUT()
+    defer { withExtendedLifetime(scratch) {} }
 
     let record = try settings.apply(.integer(7), to: limit, actor: "owner", at: instant)
 
@@ -42,7 +43,8 @@ import Testing
   }
 
   @Test func test_apply_secondChange_recordsThePreviousValueAndKeepsOldestFirst() throws {
-    let (settings, _) = try makeSUT()
+    let (settings, scratch) = try makeSUT()
+    defer { withExtendedLifetime(scratch) {} }
     _ = try settings.apply(.integer(7), to: limit, actor: "owner", at: instant)
 
     let second = try settings.apply(.integer(9), to: limit, actor: "owner", at: instant + 1)
@@ -57,7 +59,8 @@ import Testing
   }
 
   @Test func test_storedValues_returnsOnlyTheScopesAndSubjectsAskedFor() throws {
-    let (settings, _) = try makeSUT()
+    let (settings, scratch) = try makeSUT()
+    defer { withExtendedLifetime(scratch) {} }
     let family = SettingAddress(key: "demo.limit", scope: .family, subject: "ops")
     let otherFamily = SettingAddress(key: "demo.limit", scope: .family, subject: "dev")
     let principal = SettingAddress(key: "demo.limit", scope: .principal, subject: "agent-1")

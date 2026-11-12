@@ -1,0 +1,58 @@
+{
+  "settings": [
+    {
+      "key": "store.busy_timeout",
+      "type": "duration",
+      "unit": "milliseconds",
+      "default": 5000,
+      "range": { "min": 0, "max": 60000 },
+      "scopes": ["global"],
+      "description": "How long a database operation waits for a lock held by another process before it fails."
+    },
+    {
+      "key": "retention.messages.live",
+      "type": "duration",
+      "unit": "days",
+      "default": 90,
+      "range": { "min": 1, "max": 3650 },
+      "scopes": ["global"],
+      "description": "How long acknowledged mail is kept before it is deleted. Pending mail is never deleted."
+    },
+    {
+      "key": "storage.budget",
+      "type": "bytes",
+      "unit": "bytes",
+      "default": 5000000000,
+      "range": { "min": 1 },
+      "scopes": ["global"],
+      "description": "The disk budget for all managed state of the store."
+    },
+    {
+      "key": "storage.warning_percent",
+      "type": "integer",
+      "unit": "percent",
+      "default": 80,
+      "range": { "min": 1, "max": 98 },
+      "scopes": ["global"],
+      "description": "The share of the disk budget at which health reports a warning."
+    },
+    {
+      "key": "health.threshold",
+      "type": "duration",
+      "unit": "seconds",
+      "default": 1800,
+      "range": { "min": 60, "max": 86400 },
+      "scopes": ["global", "family", "principal"],
+      "description": "How long delivered mail may stay unacknowledged before it is reported as overdue."
+    },
+    {
+      "key": "messaging.wait",
+      "type": "duration",
+      "unit": "seconds",
+      "default": 900,
+      "range": { "min": 0, "max": 900 },
+      "scopes": ["global"],
+      "description": "The default and maximum time a wait for new mail may stay parked. Zero disables parked waits."
+    }
+  ]
+}

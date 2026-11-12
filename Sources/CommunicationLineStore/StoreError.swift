@@ -16,6 +16,10 @@ public enum StoreError: Error, Equatable, CustomStringConvertible {
   case unexpectedFileType(path: String)
   /// A file system call failed.
   case posix(operation: String, path: String, code: Int32)
+  /// A stored setting value is not valid JSON for a setting value.
+  case invalidStoredValue(key: String)
+  /// A bundled resource is missing.
+  case missingResource(String)
   /// A SQLite call failed.
   case sqlite(operation: String, code: Int32, message: String)
   /// A SQLite result had a type the store does not read.
@@ -39,6 +43,10 @@ public enum StoreError: Error, Equatable, CustomStringConvertible {
       return "\(path) must be a plain folder or file, not a link or another kind of entry"
     case .posix(let operation, let path, let code):
       return "\(operation) failed for \(path): \(String(cString: strerror(code))) (errno \(code))"
+    case .invalidStoredValue(let key):
+      return "the stored value of setting \(key) cannot be read; the database may be damaged"
+    case .missingResource(let name):
+      return "the bundled resource \(name) is missing from the package"
     case .sqlite(let operation, let code, let message):
       return "SQLite failed during \(operation) (code \(code)): \(message)"
     case .unsupportedColumnType(let type):

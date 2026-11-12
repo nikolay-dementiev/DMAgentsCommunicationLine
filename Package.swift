@@ -18,7 +18,8 @@ let package = Package(
     ),
     .target(
       name: "CommunicationLineStore",
-      dependencies: ["CommunicationLineDomain", "CommunicationLineApplication"]
+      dependencies: ["CommunicationLineDomain", "CommunicationLineApplication"],
+      resources: [.copy("Resources/settings-defaults.json")]
     ),
     .testTarget(
       name: "CommunicationLineDomainTests",
