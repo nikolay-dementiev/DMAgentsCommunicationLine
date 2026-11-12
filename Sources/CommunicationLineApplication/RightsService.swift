@@ -33,17 +33,23 @@ public struct RightsService {
     try rights.removeSendRule(try Self.rule(from: from, to: to))
   }
 
+  /// The target is required: a grant that opens all mail has to be asked for as `.global`.
   public func addReadGrant(
-    reader: GrantReader, expiresAt: Date?, ownerToken: CredentialToken
+    reader: GrantReader, target: GrantTarget, expiresAt: Date?, ownerToken: CredentialToken
   ) throws -> Int64 {
     try requireOwner(ownerToken)
     switch reader {
     case .principal(let id): guard !Self.isBlank(id.rawValue) else { throw RightsError.invalidRule }
     case .family(let name): guard !Self.isBlank(name) else { throw RightsError.invalidRule }
     }
+    switch target {
+    case .principal(let id): guard !Self.isBlank(id.rawValue) else { throw RightsError.invalidRule }
+    case .family(let name): guard !Self.isBlank(name) else { throw RightsError.invalidRule }
+    case .global: break
+    }
     let now = clock.now()
     if let expiresAt, expiresAt <= now { throw RightsError.expiryInThePast }
-    return try rights.addReadGrant(reader: reader, expiresAt: expiresAt, at: now)
+    return try rights.addReadGrant(reader: reader, target: target, expiresAt: expiresAt, at: now)
   }
 
   public func revokeReadGrant(id: Int64, ownerToken: CredentialToken) throws {

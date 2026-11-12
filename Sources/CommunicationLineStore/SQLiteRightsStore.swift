@@ -36,8 +36,9 @@ public final class SQLiteRightsStore: RightsStore {
     }
   }
 
-  public func addReadGrant(reader: GrantReader, expiresAt: Date?, at instant: Date) throws -> Int64
-  {
+  public func addReadGrant(
+    reader: GrantReader, target: GrantTarget, expiresAt: Date?, at instant: Date
+  ) throws -> Int64 {
     let kind: String
     let name: String
     switch reader {
@@ -48,15 +49,32 @@ public final class SQLiteRightsStore: RightsStore {
       kind = "family"
       name = family
     }
+    let targetKind: String
+    let targetName: String
+    switch target {
+    case .principal(let id):
+      targetKind = "principal"
+      targetName = id.rawValue
+    case .family(let family):
+      targetKind = "family"
+      targetName = family
+    case .global:
+      targetKind = "global"
+      targetName = ""
+    }
     let created = try StoreTime.milliseconds(of: instant)
     let expiry = try expiresAt.map { SQLiteValue.integer(try StoreTime.milliseconds(of: $0)) }
     return try store.database.transaction {
       try store.database.execute(
         """
-        INSERT INTO read_grants (reader_kind, reader, expires_at_ms, created_at_ms)
-        VALUES (?1, ?2, ?3, ?4)
+        INSERT INTO read_grants
+          (reader_kind, reader, target_kind, target, expires_at_ms, created_at_ms)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
         """,
-        [.text(kind), .text(name), expiry ?? .null, .integer(created)])
+        [
+          .text(kind), .text(name), .text(targetKind), .text(targetName), expiry ?? .null,
+          .integer(created),
+        ])
       guard
         case .integer(let id)? = try store.database.rows("SELECT last_insert_rowid()").first?
           .first
@@ -73,11 +91,22 @@ public final class SQLiteRightsStore: RightsStore {
 
   public func readGrants() throws -> [StoredReadGrant] {
     try store.database.rows(
-      "SELECT id, reader_kind, reader, expires_at_ms, revoked_at_ms FROM read_grants ORDER BY id"
+      """
+      SELECT id, reader_kind, reader, expires_at_ms, revoked_at_ms, target_kind, target
+      FROM read_grants ORDER BY id
+      """
     ).map { row in
       guard case .integer(let id) = row[0], case .text(let kind) = row[1],
-        case .text(let name) = row[2]
+        case .text(let name) = row[2], case .text(let targetKind) = row[5],
+        case .text(let targetName) = row[6]
       else { throw StoreError.invalidStoredIdentity("read grant") }
+      let target: GrantTarget
+      switch targetKind {
+      case "principal": target = .principal(PrincipalID(targetName))
+      case "family": target = .family(targetName)
+      case "global": target = .global
+      default: throw StoreError.invalidStoredIdentity("read grant target kind \(targetKind)")
+      }
       let reader: GrantReader
       switch kind {
       case "principal": reader = .principal(PrincipalID(name))
@@ -89,7 +118,9 @@ public final class SQLiteRightsStore: RightsStore {
         expiry = Date(timeIntervalSince1970: Double(milliseconds) / 1000)
       }
       return StoredReadGrant(
-        id: id, grant: ReadGrant(reader: reader, expiresAt: expiry, isRevoked: row[4] != .null))
+        id: id,
+        grant: ReadGrant(
+          reader: reader, target: target, expiresAt: expiry, isRevoked: row[4] != .null))
     }
   }
 }

@@ -78,6 +78,8 @@ public enum SchemaMigrations {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         reader_kind TEXT NOT NULL CHECK (reader_kind IN ('principal', 'family')),
         reader TEXT NOT NULL CHECK (reader <> ''),
+        target_kind TEXT NOT NULL CHECK (target_kind IN ('principal', 'family', 'global')),
+        target TEXT NOT NULL CHECK ((target_kind = 'global') = (target = '')),
         expires_at_ms INTEGER,
         created_at_ms INTEGER NOT NULL,
         revoked_at_ms INTEGER

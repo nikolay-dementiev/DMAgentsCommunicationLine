@@ -17,14 +17,26 @@ public enum GrantReader: Hashable, Sendable {
   case family(String)
 }
 
+/// Which mail an owner read grant opens. A grant never opens more than its target names.
+public enum GrantTarget: Hashable, Sendable {
+  /// The mail one principal sent or received.
+  case principal(PrincipalID)
+  /// The mail sent by principals of one family.
+  case family(String)
+  /// All mail. The owner has to ask for it explicitly; no grant defaults to it.
+  case global
+}
+
 /// An owner grant that widens reading. It never widens sending.
 public struct ReadGrant: Equatable, Sendable {
   public let reader: GrantReader
+  public let target: GrantTarget
   public let expiresAt: Date?
   public let isRevoked: Bool
 
-  public init(reader: GrantReader, expiresAt: Date?, isRevoked: Bool) {
+  public init(reader: GrantReader, target: GrantTarget, expiresAt: Date?, isRevoked: Bool) {
     self.reader = reader
+    self.target = target
     self.expiresAt = expiresAt
     self.isRevoked = isRevoked
   }
@@ -57,7 +69,7 @@ public enum AccessPolicy {
   }
 
   /// The sender, the original recipients and the head of the sender's family may read; an owner
-  /// grant that is neither revoked nor expired widens that.
+  /// grant that is neither revoked nor expired widens that, but only to the mail its target names.
   public static func canRead(
     principal: Principal, meta: MessageMeta, grants: [ReadGrant], now: Date
   ) -> Bool {
@@ -67,10 +79,23 @@ public enum AccessPolicy {
     return grants.contains { grant in
       guard !grant.isRevoked else { return false }
       if let expiry = grant.expiresAt, expiry <= now { return false }
-      switch grant.reader {
-      case .principal(let id): return id == principal.id
-      case .family(let family): return family == principal.family
-      }
+      guard isReader(principal, of: grant), opens(grant.target, meta) else { return false }
+      return true
+    }
+  }
+
+  private static func isReader(_ principal: Principal, of grant: ReadGrant) -> Bool {
+    switch grant.reader {
+    case .principal(let id): return id == principal.id
+    case .family(let family): return family == principal.family
+    }
+  }
+
+  private static func opens(_ target: GrantTarget, _ meta: MessageMeta) -> Bool {
+    switch target {
+    case .global: return true
+    case .family(let family): return family == meta.family
+    case .principal(let id): return id == meta.sender || meta.recipients.contains(id)
     }
   }
 }

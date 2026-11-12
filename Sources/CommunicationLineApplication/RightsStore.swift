@@ -42,7 +42,9 @@ public protocol RightsStore {
   func sendRules() throws -> [SendRule]
 
   /// Returns the id of the new grant.
-  func addReadGrant(reader: GrantReader, expiresAt: Date?, at instant: Date) throws -> Int64
+  func addReadGrant(
+    reader: GrantReader, target: GrantTarget, expiresAt: Date?, at instant: Date
+  ) throws -> Int64
   func revokeReadGrant(id: Int64, at instant: Date) throws
   func readGrants() throws -> [StoredReadGrant]
 }
