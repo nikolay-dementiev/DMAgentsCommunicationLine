@@ -66,7 +66,7 @@ Principals, credentials and owner-managed rights. All of it is new and open unti
 |---|---|---|
 | `principals` | `id` (primary key), `family`, `role` (`head` or `agent`), `display_name`, `enabled` (0 or 1), `created_at_ms` | A trigger refuses any update of `id`, `family` or `role`. Only `enabled` changes, and only through an owner operation. |
 | `credentials` | `id`, `digest` (unique, 64 hex characters), `kind` (`owner` or `principal`), `principal_id` (foreign key), `issued_at_ms`, `revoked_at_ms` | `kind = 'owner'` exactly when `principal_id` is null. A unique partial index allows at most one live (not revoked) owner credential. The table holds the SHA-256 digest of a token, never the token. |
-| `read_grants` | `id`, `reader_kind` (`principal` or `family`), `reader`, `expires_at_ms` (nullable), `created_at_ms`, `revoked_at_ms` (nullable) | A grant is valid while not revoked and before its expiry instant. |
+| `read_grants` | `id`, `reader_kind` (`principal` or `family`), `reader`, `target_kind` (`principal`, `family` or `global`), `target` (empty exactly when the kind is `global`), `expires_at_ms` (nullable), `created_at_ms`, `revoked_at_ms` (nullable) | A grant is valid while not revoked and before its expiry instant, and opens only the mail its target names. |
 | `send_rules` | `from_family`, `to_family` (primary key together), `created_at_ms` | A rule lets the first family send to the second, in that direction only. A family cannot have a rule to itself. |
 
 Disabling a principal clears `enabled` and sets `revoked_at_ms` on all its credentials in one transaction.

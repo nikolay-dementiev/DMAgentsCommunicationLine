@@ -46,7 +46,16 @@ A message is described by its sender, its original recipients and the sender's f
 
 1. the sender or an original recipient;
 2. a `head` of the sender's family;
-3. named by a read grant that is not revoked and not expired, either as a principal or by its family.
+3. named by a read grant that is not revoked and not expired, either as a principal or by its family, **and**
+   the grant's target covers the message.
+
+A read grant names its reader and its target. The target says which mail the grant opens, and nothing else:
+
+| Target | Opens |
+|---|---|
+| `principal` (an id) | the mail that principal sent or received |
+| `family` (a name) | the mail sent by principals of that family |
+| `global` | all mail; the owner has to ask for it explicitly, no grant defaults to it |
 
 A disabled principal reads nothing. A grant expires at its expiry instant: reading at that instant is
 refused. Observation does not acknowledge mail.
