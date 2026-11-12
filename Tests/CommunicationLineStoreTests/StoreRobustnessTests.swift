@@ -55,7 +55,8 @@ import Testing
           }
         }
       }
-      #expect(failures.isEmpty, "an opener that loses the creation race still succeeds: \(failures)")
+      #expect(
+        failures.isEmpty, "an opener that loses the creation race still succeeds: \(failures)")
     }
   }
 

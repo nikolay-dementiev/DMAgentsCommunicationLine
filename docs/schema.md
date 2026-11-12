@@ -11,9 +11,15 @@ than the code fails to open with `StoreError.newerSchema` and is not modified.
 
 - Write-ahead logging (`journal_mode = WAL`); opening fails if the file system does not accept it.
 - Foreign keys are switched on for the connection. Schema version 1 declares none.
-- Opening is safe when several processes start at once: the schema version is read again inside each
-  migration transaction, an existing folder or file is checked instead of failing, and the switch to
-  write-ahead logging is retried while another process holds the file, up to the busy timeout.
+- Opening is safe when several processes start at once, also under a umask that removes the owner's
+  write bit:
+  - the setup phase runs under an exclusive `flock` on the store folder (SQLite locks the database
+    file itself, so the file is not used for this);
+  - a process that finds a folder or file another process is still creating waits until the owner has
+    access, for at most the busy timeout;
+  - the schema version is read again inside each migration transaction;
+  - the switch to write-ahead logging is retried while another process holds the file, up to the
+    busy timeout.
 - The busy timeout (milliseconds) is a parameter of `SQLiteStore.open`; the composition root reads it from
   the setting `store.busy_timeout`.
 

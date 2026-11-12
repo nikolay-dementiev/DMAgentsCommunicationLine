@@ -8,7 +8,10 @@ enum StoreFilesystem {
   static let fileMode: mode_t = 0o600
 
   /// Creates the folder with mode 0700 when it is missing; an existing folder must already be private.
-  static func prepareFolder(_ folder: URL) throws {
+  ///
+  /// A strict umask makes the creator's folder briefly narrower than the owner needs, until its
+  /// explicit `chmod` lands. Other processes wait for that, for at most `timeoutMilliseconds`.
+  static func prepareFolder(_ folder: URL, waitingUpTo timeoutMilliseconds: Int) throws {
     let path = folder.path
     if try entry(at: path) == nil {
       if mkdir(path, folderMode) == 0 {
@@ -21,11 +24,12 @@ enum StoreFilesystem {
         throw StoreError.posix(operation: "create folder", path: path, code: errno)
       }
     }
+    try awaitOwnerAccess(path, bits: 0o700, waitingUpTo: timeoutMilliseconds)
     try verify(path, kind: S_IFDIR, maximumMode: folderMode)
   }
 
   /// Creates the database file with mode 0600 when it is missing; an existing file must already be private.
-  static func prepareDatabaseFile(_ file: URL) throws {
+  static func prepareDatabaseFile(_ file: URL, waitingUpTo timeoutMilliseconds: Int) throws {
     let path = file.path
     if try entry(at: path) == nil {
       let descriptor = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, fileMode)
@@ -39,7 +43,33 @@ enum StoreFilesystem {
         throw StoreError.posix(operation: "create database file", path: path, code: errno)
       }
     }
+    try awaitOwnerAccess(path, bits: 0o600, waitingUpTo: timeoutMilliseconds)
     try verify(path, kind: S_IFREG, maximumMode: fileMode)
+  }
+
+  /// Runs `body` while holding an exclusive advisory lock on the store folder, so that only one
+  /// process at a time sets the store up. The folder is locked rather than the database file because
+  /// SQLite takes its own `flock` locks on that file. SQLite creates the write-ahead log and shared-memory files
+  /// itself and fixes their mode a moment later; the lock keeps other processes from meeting them
+  /// in between. Waits at most `timeoutMilliseconds` for the lock.
+  static func withSetupLock<T>(
+    on folder: URL, waitingUpTo timeoutMilliseconds: Int, _ body: () throws -> T
+  ) throws -> T {
+    let path = folder.path
+    let descriptor = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+    guard descriptor >= 0 else {
+      throw StoreError.posix(operation: "open store folder for locking", path: path, code: errno)
+    }
+    defer { close(descriptor) }
+    let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000)
+    while flock(descriptor, LOCK_EX | LOCK_NB) != 0 {
+      guard errno == EWOULDBLOCK, Date() < deadline else {
+        throw StoreError.posix(operation: "lock store folder", path: path, code: errno)
+      }
+      Thread.sleep(forTimeInterval: 0.005)
+    }
+    defer { flock(descriptor, LOCK_UN) }
+    return try body()
   }
 
   /// Checks the write-ahead log and shared-memory files of `database` when they exist.
@@ -49,6 +79,17 @@ enum StoreFilesystem {
       if try entry(at: path) != nil {
         try verify(path, kind: S_IFREG, maximumMode: fileMode)
       }
+    }
+  }
+
+  /// Waits until the owner has `bits` on the entry. An entry that never gets them (for example one
+  /// the user made read-only) is left to fail in the next step with the system's own error.
+  private static func awaitOwnerAccess(
+    _ path: String, bits: mode_t, waitingUpTo timeoutMilliseconds: Int
+  ) throws {
+    let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000)
+    while let info = try entry(at: path), info.st_mode & bits != bits, Date() < deadline {
+      Thread.sleep(forTimeInterval: 0.005)
     }
   }
 

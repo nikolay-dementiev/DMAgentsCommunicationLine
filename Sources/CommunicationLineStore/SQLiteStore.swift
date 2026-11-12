@@ -32,32 +32,37 @@ public final class SQLiteStore {
     guard busyTimeoutMilliseconds >= 0 else {
       throw StoreError.invalidBusyTimeout(busyTimeoutMilliseconds)
     }
-    try StoreFilesystem.prepareFolder(path.deletingLastPathComponent())
-    try StoreFilesystem.prepareDatabaseFile(path)
-    try StoreFilesystem.verifySidecars(of: path)
-    let database = try SQLiteDatabase(path: path.path)
-    try database.setBusyTimeout(milliseconds: busyTimeoutMilliseconds)
-    try database.execute("PRAGMA foreign_keys = ON")
-    let found = try Self.userVersion(of: database)
-    guard found <= migrations.count else {
-      throw StoreError.newerSchema(found: found, supported: migrations.count)
-    }
-    try enableWriteAheadLogging(database, waitingUpTo: busyTimeoutMilliseconds)
-    try StoreFilesystem.verifySidecars(of: path)
-    for migration in migrations where migration.version > found {
-      try database.transaction {
-        // Another process may have migrated while this one waited for the write lock.
-        let current = try Self.userVersion(of: database)
-        guard current <= migrations.count else {
-          throw StoreError.newerSchema(found: current, supported: migrations.count)
-        }
-        if current >= migration.version { return }
-        for statement in migration.statements { try database.execute(statement) }
-        try database.execute("PRAGMA user_version = \(migration.version)")
+    try StoreFilesystem.prepareFolder(
+      path.deletingLastPathComponent(), waitingUpTo: busyTimeoutMilliseconds)
+    try StoreFilesystem.prepareDatabaseFile(path, waitingUpTo: busyTimeoutMilliseconds)
+    return try StoreFilesystem.withSetupLock(
+      on: path.deletingLastPathComponent(), waitingUpTo: busyTimeoutMilliseconds
+    ) {
+      try StoreFilesystem.verifySidecars(of: path)
+      let database = try SQLiteDatabase(path: path.path)
+      try database.setBusyTimeout(milliseconds: busyTimeoutMilliseconds)
+      try database.execute("PRAGMA foreign_keys = ON")
+      let found = try Self.userVersion(of: database)
+      guard found <= migrations.count else {
+        throw StoreError.newerSchema(found: found, supported: migrations.count)
       }
+      try enableWriteAheadLogging(database, waitingUpTo: busyTimeoutMilliseconds)
+      try StoreFilesystem.verifySidecars(of: path)
+      for migration in migrations where migration.version > found {
+        try database.transaction {
+          // Another process may have migrated while this one waited for the write lock.
+          let current = try Self.userVersion(of: database)
+          guard current <= migrations.count else {
+            throw StoreError.newerSchema(found: current, supported: migrations.count)
+          }
+          if current >= migration.version { return }
+          for statement in migration.statements { try database.execute(statement) }
+          try database.execute("PRAGMA user_version = \(migration.version)")
+        }
+      }
+      try StoreFilesystem.verifySidecars(of: path)
+      return SQLiteStore(database: database)
     }
-    try StoreFilesystem.verifySidecars(of: path)
-    return SQLiteStore(database: database)
   }
 
   /// Switches the file to write-ahead logging. SQLite does not apply the busy timeout to this switch when
