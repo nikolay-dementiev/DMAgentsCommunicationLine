@@ -27,6 +27,14 @@ final class HookedMessageStore: MessageStore {
   }
 
   func message(id: MessageID) throws -> StoredMessage? { try base.message(id: id) }
+
+  func inbox(for recipient: PrincipalID, after cursor: InboxCursor?, limit: Int) throws
+    -> InboxPage
+  { try base.inbox(for: recipient, after: cursor, limit: limit) }
+
+  func acknowledge(messageID: MessageID, recipient: PrincipalID, at instant: Date) throws
+    -> AcknowledgeOutcome
+  { try base.acknowledge(messageID: messageID, recipient: recipient, at: instant) }
 }
 
 /// A real store with two families, their tokens, the rights and settings services and a message
@@ -43,6 +51,8 @@ struct MessagingFixture {
   let alphaToken: CredentialToken
   let alphaPeer: Principal
   let alphaPeerToken: CredentialToken
+  let alphaHead: Principal
+  let alphaHeadToken: CredentialToken
   let beta: Principal
   let betaToken: CredentialToken
 
@@ -52,13 +62,16 @@ struct MessagingFixture {
     identity = try IdentityFixture()
     let service = identity.service
     let owner = identity.owner
-    func enrol(_ family: String, _ name: String) throws -> (Principal, CredentialToken) {
+    func enrol(_ family: String, _ name: String, _ role: RoleKind = .agent) throws -> (
+      Principal, CredentialToken
+    ) {
       let principal = try service.createPrincipal(
-        family: family, role: .agent, displayName: name, ownerToken: owner)
+        family: family, role: role, displayName: name, ownerToken: owner)
       return (principal, try service.issueCredential(for: principal.id, ownerToken: owner))
     }
     (alpha, alphaToken) = try enrol("A", "alpha")
     (alphaPeer, alphaPeerToken) = try enrol("A", "alpha peer")
+    (alphaHead, alphaHeadToken) = try enrol("A", "alpha head", .head)
     (beta, betaToken) = try enrol("B", "beta")
     rights = RightsService(
       rights: SQLiteRightsStore(store: identity.store),
@@ -69,11 +82,37 @@ struct MessagingFixture {
       store: SQLiteSettingsStore(store: identity.store), clock: clock, authenticator: service)
     store = HookedMessageStore(base: SQLiteMessageStore(store: identity.store))
     messages = MessageService(
-      store: store, authenticator: service, settings: settings,
+      store: store, rights: SQLiteRightsStore(store: identity.store), authenticator: service,
+      settings: settings,
       identifiers: SequentialIdentifiers(), clock: clock, arrival: arrival)
   }
 
   func count(_ table: String) throws -> Int {
     try identity.raw().integer("SELECT count(*) FROM \(table)")
+  }
+
+  @discardableResult
+  func mail(from token: CredentialToken, to recipient: Principal, _ subject: String = "s") throws
+    -> MessageID
+  {
+    try messages.send(
+      token: token, to: [recipient.id], subject: subject, body: "body of \(subject)")
+  }
+
+  func isAcknowledged(_ message: MessageID, by recipient: Principal) throws -> Bool {
+    try identity.raw().integer(
+      """
+      SELECT count(*) FROM deliveries d JOIN messages m ON m.seq = d.message_seq
+      WHERE m.id = '\(message.rawValue)' AND d.recipient = '\(recipient.id.rawValue)'
+        AND d.state = 'acknowledged'
+      """) == 1
+  }
+
+  func acknowledgedAt(_ message: MessageID, by recipient: Principal) throws -> Int {
+    try identity.raw().integer(
+      """
+      SELECT d.acknowledged_at_ms FROM deliveries d JOIN messages m ON m.seq = d.message_seq
+      WHERE m.id = '\(message.rawValue)' AND d.recipient = '\(recipient.id.rawValue)'
+      """)
   }
 }
