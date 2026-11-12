@@ -17,6 +17,11 @@ migrations and safe file permissions, and the typed settings catalog with audite
 Source dependencies point inward only. Concrete types are created in one place, the composition root of each
 entry point.
 
+## Documentation
+
+- [Database schema](docs/schema.md)
+- [Settings catalog](docs/settings.md)
+
 ## Build and test
 
 Requires macOS 26 and the Swift 6.4 toolchain. There are no package dependencies.
