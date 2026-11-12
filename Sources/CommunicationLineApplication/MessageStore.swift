@@ -103,6 +103,8 @@ public protocol MessageStore {
 
   func message(id: MessageID) throws -> StoredMessage?
 
+  func hasPending(for recipient: PrincipalID) throws -> Bool
+
   /// The recipient's pending deliveries after `cursor`, oldest first, at most `limit`.
   func inbox(for recipient: PrincipalID, after cursor: InboxCursor?, limit: Int) throws
     -> InboxPage
@@ -112,8 +114,39 @@ public protocol MessageStore {
     -> AcknowledgeOutcome
 }
 
-/// Tells waiting recipients that mail has been committed for them.
+/// What a waiter holds between looking at its inbox and parking, so a signal in between is not lost.
+public struct ArrivalTicket: Equatable, Sendable {
+  public let value: Int
+
+  public init(value: Int) {
+    self.value = value
+  }
+}
+
+/// Why a parked wait ended.
+public enum ArrivalResult: Equatable, Sendable {
+  case signalled
+  case timedOut
+}
+
+/// How a wait ended for the caller.
+public enum WaitResult: Equatable, Sendable {
+  /// The caller has pending mail.
+  case mail
+  /// The time ran out with nothing pending.
+  case timedOut
+}
+
+/// Wakes waiting recipients when mail is committed for them. V4 ships an in-process implementation;
+/// a cross-process one replaces it behind this interface.
 public protocol MailArrival {
+  /// The position to hold before checking the inbox. A signal after it makes `wait` return at once.
+  func ticket(for recipient: PrincipalID) -> ArrivalTicket
+
   /// Called after the transaction that stored the mail has committed.
   func signal(recipients: Set<PrincipalID>)
+
+  /// Parks until a signal for `recipient` after `ticket`, or until `timeout` seconds have passed.
+  func wait(for recipient: PrincipalID, since ticket: ArrivalTicket, timeout: TimeInterval)
+    -> ArrivalResult
 }

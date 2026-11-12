@@ -129,4 +129,11 @@ public final class SQLiteMessageStore: MessageStore {
       return .acknowledged
     }
   }
+
+  public func hasPending(for recipient: PrincipalID) throws -> Bool {
+    let rows = try store.database.rows(
+      "SELECT 1 FROM deliveries WHERE recipient = ?1 AND state = 'pending' LIMIT 1",
+      [.text(recipient.rawValue)])
+    return !rows.isEmpty
+  }
 }

@@ -93,6 +93,28 @@ public struct MessageService {
     if outcome == .notRecipient { throw MessagingError.messageUnavailable(messageID) }
   }
 
+  // MARK: - Wait
+
+  /// Returns at once when the caller has pending mail; otherwise parks until mail for the caller is
+  /// committed or `timeout` runs out. The timeout defaults to `messaging.wait` and never exceeds it;
+  /// a catalog value of zero turns parking off. Nothing polls: the wait ends on a signal.
+  public func wait(token: CredentialToken, timeout: TimeInterval? = nil) throws -> WaitResult {
+    let recipient = try requirePrincipal(token)
+    let limit = TimeInterval(try setting("messaging.wait", token: token, allowingZero: true))
+    let allowed = min(timeout ?? limit, limit)
+    let deadline = clock.now().addingTimeInterval(allowed)
+    while true {
+      let ticket = arrival.ticket(for: recipient.id)
+      if try store.hasPending(for: recipient.id) { return .mail }
+      let remaining = deadline.timeIntervalSince(clock.now())
+      guard allowed > 0, remaining > 0 else { return .timedOut }
+      switch arrival.wait(for: recipient.id, since: ticket, timeout: remaining) {
+      case .timedOut: return try store.hasPending(for: recipient.id) ? .mail : .timedOut
+      case .signalled: continue
+      }
+    }
+  }
+
   // MARK: - Helpers
 
   private func requirePrincipal(_ token: CredentialToken) throws -> Principal {
@@ -102,9 +124,11 @@ public struct MessageService {
     return principal
   }
 
-  private func setting(_ key: String, token: CredentialToken) throws -> Int {
+  private func setting(_ key: String, token: CredentialToken, allowingZero: Bool = false) throws
+    -> Int
+  {
     guard case .integer(let value) = try settings.effectiveValue(of: key, token: token),
-      let size = Int(exactly: value), size > 0
+      let size = Int(exactly: value), size > 0 || (allowingZero && size == 0)
     else { throw MessagingError.invalidSetting(key: key) }
     return size
   }
