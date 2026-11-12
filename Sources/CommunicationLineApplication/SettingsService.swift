@@ -8,37 +8,50 @@ public enum SettingsServiceError: Error, Equatable {
   case subjectRequired(SettingScope)
   case subjectNotAllowed(SettingScope)
   case invalidValue(key: String, reason: SettingValueError)
-  case actorRequired
 }
 
 /// Reads effective settings and applies audited changes.
 public struct SettingsService {
+  /// The actor recorded in the audit trail for every change: only the owner may change settings.
+  public static let ownerActor = "owner"
+
   private let catalog: SettingsCatalog
   private let store: any SettingsStore
   private let clock: any WallClock
+  private let authenticator: any Authenticating
 
-  public init(catalog: SettingsCatalog, store: any SettingsStore, clock: any WallClock) {
+  public init(
+    catalog: SettingsCatalog, store: any SettingsStore, clock: any WallClock,
+    authenticator: any Authenticating
+  ) {
     self.catalog = catalog
     self.store = store
     self.clock = clock
+    self.authenticator = authenticator
   }
 
-  /// The value that applies to a caller: principal, then family, then global, then the default.
-  public func effectiveValue(
-    of key: String, family: String?, principal: String?
-  ) throws -> SettingValue {
+  /// The value that applies to the caller the token belongs to: that principal, its family, global,
+  /// then the default. The owner sees global values and defaults.
+  public func effectiveValue(of key: String, token: CredentialToken) throws -> SettingValue {
+    let actor = try authenticator.authenticate(token)
     let definition = try definition(for: key)
+    var family: String?
+    var principal: String?
+    if case .principal(let caller) = actor {
+      family = caller.family
+      principal = caller.id.rawValue
+    }
     let stored = try store.storedValues(key: key, family: family, principal: principal)
     return definition.effectiveValue(
       principal: stored.principal, family: stored.family, global: stored.global)
   }
 
-  /// Validates a change against the catalog and applies it with an audit record.
-  ///
-  /// The actor is recorded as given; deciding who may change a setting belongs to the access layer.
+  /// Validates a change against the catalog and applies it with an audit record. Only the owner's
+  /// token is accepted; the owner is the audited actor.
   public func change(
-    _ address: SettingAddress, to value: SettingValue, actor: String
+    _ address: SettingAddress, to value: SettingValue, ownerToken: CredentialToken
   ) throws -> SettingAuditRecord {
+    try requireOwner(ownerToken)
     let definition = try definition(for: address.key)
     guard definition.scopes.contains(address.scope) else {
       throw SettingsServiceError.scopeNotAllowed(key: address.key, scope: address.scope)
@@ -50,20 +63,26 @@ public struct SettingsService {
     if address.scope != .global, !hasSubject {
       throw SettingsServiceError.subjectRequired(address.scope)
     }
-    guard !actor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-      throw SettingsServiceError.actorRequired
-    }
     do {
       try definition.validate(value)
     } catch let reason as SettingValueError {
       throw SettingsServiceError.invalidValue(key: address.key, reason: reason)
     }
-    return try store.apply(value, to: address, actor: actor, at: clock.now())
+    return try store.apply(value, to: address, actor: Self.ownerActor, at: clock.now())
   }
 
-  public func auditTrail(of key: String) throws -> [SettingAuditRecord] {
+  public func auditTrail(of key: String, ownerToken: CredentialToken) throws
+    -> [SettingAuditRecord]
+  {
+    try requireOwner(ownerToken)
     _ = try definition(for: key)
     return try store.auditRecords(key: key)
+  }
+
+  private func requireOwner(_ token: CredentialToken) throws {
+    guard case .owner = try authenticator.authenticate(token) else {
+      throw IdentityError.ownerCredentialRequired
+    }
   }
 
   private func definition(for key: String) throws -> SettingDefinition {
