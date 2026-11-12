@@ -10,6 +10,13 @@ public enum SettingsServiceError: Error, Equatable {
   case invalidValue(key: String, reason: SettingValueError)
 }
 
+/// Reads the effective value of a setting for the caller a token belongs to.
+public protocol SettingsReading {
+  func effectiveValue(of key: String, token: CredentialToken) throws -> SettingValue
+}
+
+extension SettingsService: SettingsReading {}
+
 /// Reads effective settings and applies audited changes.
 public struct SettingsService {
   /// The actor recorded in the audit trail for every change: only the owner may change settings.

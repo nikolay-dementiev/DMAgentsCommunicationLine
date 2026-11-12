@@ -15,11 +15,15 @@ public struct SecureRandomSource: RandomSource {
   }
 }
 
-/// Principal ids that are random UUIDs.
+/// Principal and message ids that are random UUIDs.
 public struct UUIDIdentifierSource: IdentifierSource {
   public init() {}
 
   public func newPrincipalID() -> PrincipalID {
     PrincipalID(UUID().uuidString.lowercased())
+  }
+
+  public func newMessageID() -> MessageID {
+    MessageID(UUID().uuidString.lowercased())
   }
 }

@@ -118,7 +118,7 @@ public enum SchemaMigrations {
         acknowledged_at_ms INTEGER,
         PRIMARY KEY (message_seq, recipient),
         CHECK ((state = 'acknowledged') = (acknowledged_at_ms IS NOT NULL))
-      ) WITHOUT ROWID
+      )
       """,
       "CREATE INDEX deliveries_by_recipient ON deliveries (recipient, state, message_seq)",
     ])

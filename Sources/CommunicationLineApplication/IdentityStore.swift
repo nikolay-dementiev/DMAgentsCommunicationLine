@@ -18,9 +18,10 @@ public protocol RandomSource {
   func randomBytes(count: Int) throws -> [UInt8]
 }
 
-/// Where the ids of new principals come from.
+/// Where the ids of new principals and new messages come from.
 public protocol IdentifierSource {
   func newPrincipalID() -> PrincipalID
+  func newMessageID() -> MessageID
 }
 
 /// Turns a presented token into the caller it belongs to.
