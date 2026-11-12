@@ -18,6 +18,9 @@ import Testing
         "storage.warning_percent": .integer(80),
         "health.threshold": .integer(1800),
         "messaging.wait": .integer(900),
+        "messaging.subject_max": .integer(512),
+        "messaging.body_max": .integer(262_144),
+        "messaging.page_size": .integer(100),
       ], "the shipped keys and defaults")
   }
 
@@ -33,6 +36,15 @@ import Testing
     #expect(
       catalog.definition(for: "messaging.wait")?.range
         == SettingRange(minimum: 0, maximum: 900), "wait is 0..900")
+    #expect(
+      catalog.definition(for: "messaging.page_size")?.range
+        == SettingRange(minimum: 1, maximum: 100), "page size is 1..100")
+    #expect(
+      catalog.definition(for: "messaging.subject_max")?.range
+        == SettingRange(minimum: 1, maximum: 4096), "subject limit is 1..4096")
+    #expect(
+      catalog.definition(for: "messaging.body_max")?.range
+        == SettingRange(minimum: 1, maximum: 1_048_576), "body limit is 1..1048576")
     #expect(
       catalog.definition(for: "health.threshold")?.scopes == [.global, .family, .principal],
       "the overdue threshold is settable per family and per principal")
