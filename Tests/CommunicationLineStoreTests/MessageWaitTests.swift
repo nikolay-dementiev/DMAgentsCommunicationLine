@@ -122,4 +122,45 @@ private final class BackgroundWait: @unchecked Sendable {
 
     #expect(committedAtSignal == [1], "a waiter woken by the signal finds the delivery")
   }
+
+  // MARK: - The in-process arrival on its own
+
+  @Test func test_arrival_signalForSomeoneElse_doesNotWakeAWaiter() {
+    let arrival = InProcessMailArrival()
+    let waiting = PrincipalID("waiting")
+    let ticket = arrival.ticket(for: waiting)
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+      arrival.signal(recipients: [PrincipalID("someone-else")])
+    }
+
+    #expect(
+      arrival.wait(for: waiting, since: ticket, timeout: 0.4) == .timedOut,
+      "only a signal naming the waiter wakes it")
+  }
+
+  @Test func test_arrival_signalForTheWaiter_wakesIt() {
+    let arrival = InProcessMailArrival()
+    let waiting = PrincipalID("waiting")
+    let ticket = arrival.ticket(for: waiting)
+    DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+      arrival.signal(recipients: [waiting])
+    }
+
+    #expect(arrival.wait(for: waiting, since: ticket, timeout: 10) == .signalled, "woken")
+  }
+
+  @Test func test_arrival_signalBetweenTheTicketAndTheWait_isNotLost() {
+    let arrival = InProcessMailArrival()
+    let waiting = PrincipalID("waiting")
+    let ticket = arrival.ticket(for: waiting)
+
+    arrival.signal(recipients: [waiting])
+    let started = Date()
+
+    #expect(
+      arrival.wait(for: waiting, since: ticket, timeout: 10) == .signalled,
+      "a signal after the ticket is reported")
+    #expect(
+      Date().timeIntervalSince(started) < 5, "and it returns at once instead of parking")
+  }
 }
