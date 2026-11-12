@@ -121,5 +121,44 @@ public enum SchemaMigrations {
       )
       """,
       "CREATE INDEX deliveries_by_recipient ON deliveries (recipient, state, message_seq)",
+      """
+      CREATE TRIGGER deliveries_pending_cannot_be_deleted
+      BEFORE DELETE ON deliveries WHEN OLD.state = 'pending'
+      BEGIN
+        SELECT RAISE(ABORT, 'a pending delivery cannot be deleted');
+      END
+      """,
+      """
+      CREATE TRIGGER deliveries_acknowledged_is_final
+      BEFORE UPDATE ON deliveries WHEN OLD.state = 'acknowledged'
+      BEGIN
+        SELECT RAISE(ABORT, 'an acknowledged delivery cannot be changed');
+      END
+      """,
+      """
+      CREATE TRIGGER deliveries_pending_only_becomes_acknowledged
+      BEFORE UPDATE ON deliveries
+      WHEN OLD.state = 'pending'
+        AND (NEW.state <> 'acknowledged' OR NEW.message_seq <> OLD.message_seq
+          OR NEW.recipient <> OLD.recipient)
+      BEGIN
+        SELECT RAISE(ABORT, 'a pending delivery can only be acknowledged');
+      END
+      """,
+      """
+      CREATE TRIGGER messages_with_a_pending_delivery_cannot_be_deleted
+      BEFORE DELETE ON messages
+      WHEN EXISTS (SELECT 1 FROM deliveries WHERE message_seq = OLD.seq AND state = 'pending')
+      BEGIN
+        SELECT RAISE(ABORT, 'a message with a pending delivery cannot be deleted');
+      END
+      """,
+      """
+      CREATE TRIGGER messages_are_immutable
+      BEFORE UPDATE ON messages
+      BEGIN
+        SELECT RAISE(ABORT, 'a message cannot be rewritten');
+      END
+      """,
     ])
 }
