@@ -53,6 +53,33 @@
       "range": { "min": 0, "max": 900 },
       "scopes": ["global"],
       "description": "The default and maximum time a wait for new mail may stay parked. Zero disables parked waits."
+    },
+    {
+      "key": "messaging.subject_max",
+      "type": "bytes",
+      "unit": "bytes",
+      "default": 512,
+      "range": { "min": 1, "max": 4096 },
+      "scopes": ["global"],
+      "description": "The largest subject of a message, in UTF-8 bytes."
+    },
+    {
+      "key": "messaging.body_max",
+      "type": "bytes",
+      "unit": "bytes",
+      "default": 262144,
+      "range": { "min": 1, "max": 1048576 },
+      "scopes": ["global"],
+      "description": "The largest body of a message, in UTF-8 bytes."
+    },
+    {
+      "key": "messaging.page_size",
+      "type": "integer",
+      "unit": "messages",
+      "default": 100,
+      "range": { "min": 1, "max": 100 },
+      "scopes": ["global"],
+      "description": "The most messages one inbox page returns."
     }
   ]
 }

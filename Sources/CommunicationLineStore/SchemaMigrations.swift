@@ -1,6 +1,6 @@
 /// The numbered schema steps of the product. Released versions never change; add a new step instead.
 public enum SchemaMigrations {
-  public static let all: [Migration] = [version1, version2]
+  public static let all: [Migration] = [version1, version2, version3]
 
   /// Version 1: stored settings and their append-only audit trail.
   private static let version1 = Migration(
@@ -94,5 +94,32 @@ public enum SchemaMigrations {
         CHECK (from_family <> to_family)
       ) WITHOUT ROWID
       """,
+    ])
+
+  /// Version 3: messages and one delivery per recipient. A pending delivery cannot be deleted.
+  private static let version3 = Migration(
+    version: 3,
+    statements: [
+      """
+      CREATE TABLE messages (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL UNIQUE CHECK (id <> ''),
+        sender TEXT NOT NULL REFERENCES principals (id),
+        subject TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at_ms INTEGER NOT NULL
+      )
+      """,
+      """
+      CREATE TABLE deliveries (
+        message_seq INTEGER NOT NULL REFERENCES messages (seq),
+        recipient TEXT NOT NULL REFERENCES principals (id),
+        state TEXT NOT NULL CHECK (state IN ('pending', 'acknowledged')),
+        acknowledged_at_ms INTEGER,
+        PRIMARY KEY (message_seq, recipient),
+        CHECK ((state = 'acknowledged') = (acknowledged_at_ms IS NOT NULL))
+      ) WITHOUT ROWID
+      """,
+      "CREATE INDEX deliveries_by_recipient ON deliveries (recipient, state, message_seq)",
     ])
 }

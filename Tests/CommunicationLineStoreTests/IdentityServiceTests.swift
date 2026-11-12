@@ -7,11 +7,12 @@ import Testing
 @Suite struct IdentityServiceTests {
   // MARK: - Schema
 
-  @Test func test_schema_versionTwoAddsIdentityAndRightsTables() throws {
+  @Test func test_schema_identityAndRightsTablesExist() throws {
     let fixture = try IdentityFixture()
     let raw = try fixture.raw()
 
-    #expect(try raw.integer("PRAGMA user_version") == 2, "schema version 2")
+    #expect(
+      try raw.integer("PRAGMA user_version") == SchemaMigrations.all.count, "latest schema version")
     for table in ["principals", "credentials", "read_grants", "send_rules"] {
       #expect(try raw.tableExists(table), "\(table) exists")
     }
