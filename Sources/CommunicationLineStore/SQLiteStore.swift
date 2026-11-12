@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 
 /// The SQLite pragmas a caller may observe.
 public enum StorePragma: String {
@@ -41,18 +42,40 @@ public final class SQLiteStore {
     guard found <= migrations.count else {
       throw StoreError.newerSchema(found: found, supported: migrations.count)
     }
-    let journal = try database.rows("PRAGMA journal_mode = WAL")
-    guard journal == [[.text("wal")]] else {
-      throw StoreError.walUnavailable(actual: "\(journal)")
-    }
+    try enableWriteAheadLogging(database, waitingUpTo: busyTimeoutMilliseconds)
+    try StoreFilesystem.verifySidecars(of: path)
     for migration in migrations where migration.version > found {
       try database.transaction {
+        // Another process may have migrated while this one waited for the write lock.
+        let current = try Self.userVersion(of: database)
+        guard current <= migrations.count else {
+          throw StoreError.newerSchema(found: current, supported: migrations.count)
+        }
+        if current >= migration.version { return }
         for statement in migration.statements { try database.execute(statement) }
         try database.execute("PRAGMA user_version = \(migration.version)")
       }
     }
     try StoreFilesystem.verifySidecars(of: path)
     return SQLiteStore(database: database)
+  }
+
+  /// Switches the file to write-ahead logging. SQLite does not apply the busy timeout to this switch when
+  /// another connection is opening the same file, so a busy answer is retried until the timeout is spent.
+  private static func enableWriteAheadLogging(
+    _ database: SQLiteDatabase, waitingUpTo timeoutMilliseconds: Int
+  ) throws {
+    let deadline = Date().addingTimeInterval(Double(timeoutMilliseconds) / 1000)
+    while try database.rows("PRAGMA journal_mode") != [[.text("wal")]] {
+      do {
+        let journal = try database.rows("PRAGMA journal_mode = WAL")
+        guard journal == [[.text("wal")]] else {
+          throw StoreError.walUnavailable(actual: "\(journal)")
+        }
+      } catch StoreError.sqlite(_, let code, _) where code == SQLITE_BUSY && Date() < deadline {
+        Thread.sleep(forTimeInterval: 0.005)
+      }
+    }
   }
 
   public func schemaVersion() throws -> Int {

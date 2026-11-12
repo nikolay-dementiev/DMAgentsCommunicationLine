@@ -38,6 +38,7 @@ public final class SQLiteSettingsStore: SettingsStore {
   ) throws -> SettingAuditRecord {
     let subject = address.subject ?? ""
     let newJSON = try Self.encode(value)
+    let milliseconds = try Self.milliseconds(of: instant)
     return try store.database.transaction {
       let previous = try store.database.rows(
         "SELECT value FROM settings_values WHERE key = ?1 AND scope = ?2 AND subject = ?3",
@@ -58,12 +59,13 @@ public final class SQLiteSettingsStore: SettingsStore {
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
         """,
         [
-          .integer(Self.milliseconds(of: instant)), .text(actor), .text(address.key),
+          .integer(milliseconds), .text(actor), .text(address.key),
           .text(address.scope.rawValue), .text(subject),
           try oldValue.map { .text(try Self.encode($0)) } ?? .null, .text(newJSON),
         ])
       return SettingAuditRecord(
-        at: instant, actor: actor, address: address, oldValue: oldValue, newValue: value)
+        at: Date(timeIntervalSince1970: Double(milliseconds) / 1000), actor: actor,
+        address: address, oldValue: oldValue, newValue: value)
     }
   }
 
@@ -88,8 +90,11 @@ public final class SQLiteSettingsStore: SettingsStore {
     }
   }
 
-  private static func milliseconds(of instant: Date) -> Int64 {
-    Int64((instant.timeIntervalSince1970 * 1000).rounded())
+  private static func milliseconds(of instant: Date) throws -> Int64 {
+    guard let value = Int64(exactly: (instant.timeIntervalSince1970 * 1000).rounded()) else {
+      throw StoreError.invalidTimestamp
+    }
+    return value
   }
 
   private static func encode(_ value: SettingValue) throws -> String {

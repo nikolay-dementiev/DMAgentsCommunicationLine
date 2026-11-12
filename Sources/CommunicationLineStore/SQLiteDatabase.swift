@@ -39,9 +39,15 @@ final class SQLiteDatabase {
 
   func rows(_ sql: String, _ bindings: [SQLiteValue] = []) throws -> [[SQLiteValue]] {
     var statement: OpaquePointer?
-    let prepared = sqlite3_prepare_v2(handle, sql, -1, &statement, nil)
-    guard prepared == SQLITE_OK else { throw failure("prepare", prepared) }
     defer { sqlite3_finalize(statement) }
+    let hasMore = try sql.withCString { text -> Bool in
+      var tail: UnsafePointer<CChar>?
+      let prepared = sqlite3_prepare_v2(handle, text, -1, &statement, &tail)
+      guard prepared == SQLITE_OK else { throw failure("prepare", prepared) }
+      return tail.map { String(cString: $0).contains { !$0.isWhitespace && $0 != ";" } } ?? false
+    }
+    // SQLite runs only the first statement of a string; refuse the rest instead of dropping it.
+    guard !hasMore else { throw StoreError.multipleStatements(sql) }
     for (offset, value) in bindings.enumerated() {
       try bind(value, at: Int32(offset + 1), to: statement)
     }
@@ -70,7 +76,20 @@ final class SQLiteDatabase {
       }
       throw error
     }
-    try execute("COMMIT")
+    do {
+      try execute("COMMIT")
+    } catch {
+      // A failed COMMIT (busy, disk full) can leave the transaction open; end it so the connection stays usable.
+      if sqlite3_get_autocommit(handle) == 0 {
+        do {
+          try execute("ROLLBACK")
+        } catch let rollbackError {
+          throw StoreError.sqlite(
+            operation: "rollback after \(error)", code: SQLITE_ERROR, message: "\(rollbackError)")
+        }
+      }
+      throw error
+    }
     return result
   }
 
@@ -78,7 +97,12 @@ final class SQLiteDatabase {
     let code: Int32
     switch value {
     case .integer(let number): code = sqlite3_bind_int64(statement, index, number)
-    case .text(let text): code = sqlite3_bind_text(statement, index, text, -1, sqliteTransient)
+    case .text(let text):
+      // Bind the exact byte count: a length of -1 would stop at an embedded NUL character.
+      guard let length = Int32(exactly: text.utf8.count) else {
+        throw StoreError.sqlite(operation: "bind", code: SQLITE_TOOBIG, message: "text too long")
+      }
+      code = sqlite3_bind_text(statement, index, text, length, sqliteTransient)
     case .null: code = sqlite3_bind_null(statement, index)
     }
     guard code == SQLITE_OK else { throw failure("bind", code) }
@@ -88,7 +112,13 @@ final class SQLiteDatabase {
     try (0..<sqlite3_column_count(statement)).map { column in
       switch sqlite3_column_type(statement, column) {
       case SQLITE_INTEGER: return .integer(sqlite3_column_int64(statement, column))
-      case SQLITE_TEXT: return .text(String(cString: sqlite3_column_text(statement, column)))
+      case SQLITE_TEXT:
+        guard let bytes = sqlite3_column_text(statement, column) else {
+          throw failure("read text", SQLITE_NOMEM)
+        }
+        let count = Int(sqlite3_column_bytes(statement, column))
+        return .text(
+          String(decoding: UnsafeBufferPointer(start: bytes, count: count), as: UTF8.self))
       case SQLITE_NULL: return .null
       case let other: throw StoreError.unsupportedColumnType(other)
       }

@@ -11,12 +11,14 @@ enum StoreFilesystem {
   static func prepareFolder(_ folder: URL) throws {
     let path = folder.path
     if try entry(at: path) == nil {
-      guard mkdir(path, folderMode) == 0 else {
+      if mkdir(path, folderMode) == 0 {
+        // The umask can only remove bits from the mode given to mkdir; set it explicitly afterwards.
+        guard chmod(path, folderMode) == 0 else {
+          throw StoreError.posix(operation: "set folder mode", path: path, code: errno)
+        }
+      } else if errno != EEXIST {
+        // EEXIST means another process created it first; it is checked below like any existing folder.
         throw StoreError.posix(operation: "create folder", path: path, code: errno)
-      }
-      // The umask can only remove bits from the mode given to mkdir; set it explicitly afterwards.
-      guard chmod(path, folderMode) == 0 else {
-        throw StoreError.posix(operation: "set folder mode", path: path, code: errno)
       }
     }
     try verify(path, kind: S_IFDIR, maximumMode: folderMode)
@@ -27,12 +29,14 @@ enum StoreFilesystem {
     let path = file.path
     if try entry(at: path) == nil {
       let descriptor = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, fileMode)
-      guard descriptor >= 0 else {
+      if descriptor >= 0 {
+        defer { close(descriptor) }
+        guard fchmod(descriptor, fileMode) == 0 else {
+          throw StoreError.posix(operation: "set database file mode", path: path, code: errno)
+        }
+      } else if errno != EEXIST {
+        // EEXIST means another process created it first; it is checked below like any existing file.
         throw StoreError.posix(operation: "create database file", path: path, code: errno)
-      }
-      defer { close(descriptor) }
-      guard fchmod(descriptor, fileMode) == 0 else {
-        throw StoreError.posix(operation: "set database file mode", path: path, code: errno)
       }
     }
     try verify(path, kind: S_IFREG, maximumMode: fileMode)

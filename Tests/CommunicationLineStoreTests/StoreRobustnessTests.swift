@@ -64,7 +64,10 @@ import Testing
       "the time is rounded to milliseconds in the returned record as well")
   }
 
-  @Test(arguments: [Date.distantFuture, Date(timeIntervalSince1970: .infinity), Date.distantPast])
+  @Test(arguments: [
+    Date(timeIntervalSince1970: .infinity), Date(timeIntervalSince1970: .nan),
+    Date(timeIntervalSince1970: 1e300),
+  ])
   func test_apply_unrepresentableTime_isRejected(time: Date) throws {
     let (settings, scratch) = try makeSettings()
     defer { withExtendedLifetime(scratch) {} }
