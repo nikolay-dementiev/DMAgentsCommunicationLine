@@ -28,6 +28,12 @@ struct FailingRandom: RandomSource {
 
 final class SequentialIdentifiers: IdentifierSource {
   private var next = 0
+  private var nextMessage = 0
+
+  func newMessageID() -> MessageID {
+    nextMessage += 1
+    return MessageID("m\(nextMessage)")
+  }
 
   func newPrincipalID() -> PrincipalID {
     next += 1
