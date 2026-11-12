@@ -32,3 +32,9 @@ public struct Principal: Equatable, Sendable {
     self.isEnabled = isEnabled
   }
 }
+
+/// Who a valid token belongs to.
+public enum AuthenticatedActor: Equatable, Sendable {
+  case owner
+  case principal(Principal)
+}
