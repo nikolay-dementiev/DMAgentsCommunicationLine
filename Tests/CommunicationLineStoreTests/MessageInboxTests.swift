@@ -55,6 +55,18 @@ import Testing
     #expect(third.next == nil, "no cursor after the last page")
   }
 
+  @Test func test_inbox_storeRefusesAPageLimitBelowOne() throws {
+    let fixture = try MessagingFixture()
+    let store = SQLiteMessageStore(store: fixture.identity.store)
+    try fixture.mail(from: fixture.alphaToken, to: fixture.alphaPeer)
+
+    for limit in [0, -1] {
+      #expect(throws: MessagingError.invalidPageLimit(limit)) {
+        _ = try store.inbox(for: fixture.alphaPeer.id, after: nil, limit: limit)
+      }
+    }
+  }
+
   @Test func test_inbox_ownerToken_isRefused() throws {
     let fixture = try MessagingFixture()
 

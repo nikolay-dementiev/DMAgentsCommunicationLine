@@ -161,6 +161,36 @@ private final class BackgroundWait: @unchecked Sendable {
       arrival.wait(for: waiting, since: ticket, timeout: 10) == .signalled,
       "a signal after the ticket is reported")
     #expect(
-      Date().timeIntervalSince(started) < 5, "and it returns at once instead of parking")
+      Date().timeIntervalSince(started) < 1, "and it returns at once instead of parking")
+  }
+
+  // MARK: - A wake that finds nothing
+
+  /// Returns the scripted results in order, then `.timedOut`, and records every timeout it was given.
+  private final class ScriptedArrival: MailArrival {
+    private var script: [ArrivalResult]
+    private(set) var timeouts: [TimeInterval] = []
+
+    init(_ script: [ArrivalResult]) { self.script = script }
+
+    func ticket(for recipient: PrincipalID) -> ArrivalTicket { ArrivalTicket(value: 0) }
+    func signal(recipients: Set<PrincipalID>) {}
+
+    func wait(for recipient: PrincipalID, since ticket: ArrivalTicket, timeout: TimeInterval)
+      -> ArrivalResult
+    {
+      timeouts.append(timeout)
+      return script.isEmpty ? .timedOut : script.removeFirst()
+    }
+  }
+
+  @Test func test_wait_aSignalThatFindsNothingPending_keepsWaitingForTheRestOfTheTime() throws {
+    let arrival = ScriptedArrival([.signalled])
+    let fixture = try MessagingFixture(arrival: arrival)
+
+    let result = try fixture.messages.wait(token: fixture.alphaPeerToken, timeout: 30)
+
+    #expect(result == .timedOut, "a wake with an empty inbox is not mail")
+    #expect(arrival.timeouts == [30, 30], "it parked again for the time that was left")
   }
 }

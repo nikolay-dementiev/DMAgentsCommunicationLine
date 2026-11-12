@@ -77,6 +77,32 @@ import Testing
     #expect(reason.contains("message"), "the trigger names the reason: \(reason)")
   }
 
+  @Test func test_insertOrReplace_cannotOverwriteADeliveryOrAMessage() throws {
+    let (fixture, id) = try pendingFixture()
+    let raw = try fixture.identity.raw()
+    let recipient = fixture.alphaPeer.id.rawValue
+    let sender = fixture.alpha.id.rawValue
+
+    #expect(
+      try !refusal(
+        of:
+          "INSERT OR REPLACE INTO deliveries VALUES (1, '\(recipient)', 'acknowledged', 5)",
+        on: raw
+      ).isEmpty, "a pending delivery cannot be replaced")
+    #expect(
+      try !refusal(
+        of:
+          """
+          INSERT OR REPLACE INTO messages (seq, id, sender, subject, body, created_at_ms)
+          VALUES (1, '\(id.rawValue)', '\(sender)', 'forged', 'forged', 1)
+          """, on: raw
+      ).isEmpty, "a stored message cannot be replaced")
+    #expect(!(try fixture.isAcknowledged(id, by: fixture.alphaPeer)), "the delivery is pending")
+    #expect(
+      try fixture.messages.read(token: fixture.alphaToken, messageID: id).subject == "s",
+      "the message is unchanged")
+  }
+
   @Test func test_acknowledgedDelivery_mayBeDeleted_soThatRetentionCanReclaimIt() throws {
     let (fixture, id) = try pendingFixture()
     try fixture.messages.acknowledge(token: fixture.alphaPeerToken, messageID: id)
