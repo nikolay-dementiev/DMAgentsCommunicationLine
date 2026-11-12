@@ -12,8 +12,13 @@ enum SQLiteValue: Equatable {
 }
 
 /// A thin wrapper over one SQLite connection. Statements are always parameterised.
+///
+/// One connection can be used from several threads. A recursive lock makes every statement, and every
+/// whole transaction, run as one unit: another thread's read never sees the uncommitted rows of an open
+/// transaction and never starts a transaction inside it. (`FULLMUTEX` alone serialises single calls.)
 final class SQLiteDatabase {
   private var handle: OpaquePointer?
+  private let lock = NSRecursiveLock()
 
   init(path: String) throws {
     let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
@@ -38,6 +43,8 @@ final class SQLiteDatabase {
   }
 
   func rows(_ sql: String, _ bindings: [SQLiteValue] = []) throws -> [[SQLiteValue]] {
+    lock.lock()
+    defer { lock.unlock() }
     var statement: OpaquePointer?
     defer { sqlite3_finalize(statement) }
     let hasMore = try sql.withCString { text -> Bool in
@@ -62,6 +69,8 @@ final class SQLiteDatabase {
 
   /// Runs `body` inside one write transaction: committed when it returns, rolled back when it throws.
   func transaction<Result>(_ body: () throws -> Result) throws -> Result {
+    lock.lock()
+    defer { lock.unlock() }
     try execute("BEGIN IMMEDIATE")
     let result: Result
     do {

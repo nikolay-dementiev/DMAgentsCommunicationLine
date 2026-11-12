@@ -11,6 +11,8 @@ public enum MessagingError: Error, Equatable {
   case messageUnavailable(MessageID)
   /// A messaging setting holds a value the service cannot use.
   case invalidSetting(key: String)
+  /// A store was asked for a page of fewer than one message.
+  case invalidPageLimit(Int)
 }
 
 /// A message ready to be stored. The sender is the authenticated caller, never a request field.

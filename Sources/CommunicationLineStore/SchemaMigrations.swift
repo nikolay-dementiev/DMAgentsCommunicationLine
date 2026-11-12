@@ -154,6 +154,23 @@ public enum SchemaMigrations {
       END
       """,
       """
+      CREATE TRIGGER messages_cannot_be_replaced
+      BEFORE INSERT ON messages
+      WHEN EXISTS (SELECT 1 FROM messages WHERE seq = NEW.seq OR id = NEW.id)
+      BEGIN
+        SELECT RAISE(ABORT, 'a stored message cannot be replaced');
+      END
+      """,
+      """
+      CREATE TRIGGER deliveries_cannot_be_replaced
+      BEFORE INSERT ON deliveries
+      WHEN EXISTS (
+        SELECT 1 FROM deliveries WHERE message_seq = NEW.message_seq AND recipient = NEW.recipient)
+      BEGIN
+        SELECT RAISE(ABORT, 'a stored delivery cannot be replaced');
+      END
+      """,
+      """
       CREATE TRIGGER messages_are_immutable
       BEFORE UPDATE ON messages
       BEGIN

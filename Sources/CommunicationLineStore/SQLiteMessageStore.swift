@@ -79,12 +79,13 @@ public final class SQLiteMessageStore: MessageStore {
   public func inbox(for recipient: PrincipalID, after cursor: InboxCursor?, limit: Int) throws
     -> InboxPage
   {
+    guard limit >= 1, limit < Int.max else { throw MessagingError.invalidPageLimit(limit) }
     let rows = try store.database.rows(
       """
       SELECT m.seq, m.id, m.sender, m.subject, m.created_at_ms
       FROM deliveries d JOIN messages m ON m.seq = d.message_seq
-      WHERE d.recipient = ?1 AND d.state = 'pending' AND m.seq > ?2
-      ORDER BY m.seq LIMIT ?3
+      WHERE d.recipient = ?1 AND d.state = 'pending' AND d.message_seq > ?2
+      ORDER BY d.message_seq LIMIT ?3
       """,
       [.text(recipient.rawValue), .integer(cursor?.sequence ?? 0), .integer(Int64(limit) + 1)])
     var entries: [InboxEntry] = []
