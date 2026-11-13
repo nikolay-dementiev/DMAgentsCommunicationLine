@@ -19,4 +19,16 @@ struct SocketPathTests {
 
     #expect(openDescriptors() - before < 5, "no descriptor is left behind per attempt")
   }
+
+  @Test func test_theServiceConnection_reportsALongPathAsFinal() {
+    let path = "/tmp/" + String(repeating: "x", count: 200)
+    let request = WireRequest(token: nil, operation: "wait")
+
+    #expect(
+      throws: ServiceConnectionError.pathTooLong(path),
+      "the caller can tell that retrying cannot help"
+    ) {
+      _ = try SocketServiceConnection(socketPath: path).exchange(request)
+    }
+  }
 }
