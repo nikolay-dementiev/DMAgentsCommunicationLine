@@ -217,7 +217,10 @@ public final class ServiceHost: @unchecked Sendable {
   private func cleanupLoop() {
     state.lock()
     while !isStopped {
-      state.wait(until: Date().addingTimeInterval(cleanupInterval))
+      // Every connection that ends broadcasts on this condition, so waking up is no sign that the
+      // interval has passed.
+      let next = Date().addingTimeInterval(cleanupInterval)
+      while !isStopped && Date() < next { state.wait(until: next) }
       if isStopped { break }
       state.unlock()
       do {
