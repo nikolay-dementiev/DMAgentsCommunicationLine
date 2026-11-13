@@ -374,3 +374,73 @@ struct ScheduledCleanupTests {
       "the service deleted the mail by itself once it was past its retention")
   }
 }
+
+struct ConnectionLimitTests {
+  private func ownerCredentialSucceeds(_ host: ServiceHost) -> Bool {
+    (try? SocketExchange.call(
+      socketPath: host.socketPath, request: WireRequest(token: nil, operation: "owner.credential"),
+      maximumFrame: host.frameMaximum))?.isSuccess == true
+  }
+
+  @Test func test_aConnectionPastTheLimit_isRefusedAtOnce_andAFreedPlaceIsUsable() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 5, connectionLimit: 2)
+    defer { host.stop() }
+    let first = try UnixSocketClient.connect(path: host.socketPath)
+    let second = try UnixSocketClient.connect(path: host.socketPath)
+    let third = try UnixSocketClient.connect(path: host.socketPath)
+    let started = Date()
+
+    let answer = try third.read(upTo: 1)
+
+    #expect(answer.isEmpty, "the service closed the connection it would not take")
+    #expect(Date().timeIntervalSince(started) < 2, "it refused at once, not after the timeout")
+    first.close()
+    let deadline = Date().addingTimeInterval(3)
+    var served = ownerCredentialSucceeds(host)
+    while !served && Date() < deadline {
+      Thread.sleep(forTimeInterval: 0.05)
+      served = ownerCredentialSucceeds(host)
+    }
+    #expect(served, "a place that was freed serves the next request")
+    second.close()
+  }
+
+  @Test func test_aTricklingClient_isClosedAtTheRequestDeadline() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 5, requestDeadline: 0.4)
+    defer { host.stop() }
+    let stream = try UnixSocketClient.connect(path: host.socketPath)
+    try stream.write(Data([0, 0, 3, 0xE8]))
+    let started = Date()
+    var closed = false
+
+    // One byte every tenth of a second keeps every single read inside the per-read timeout.
+    for _ in 0..<40 where !closed {
+      Thread.sleep(forTimeInterval: 0.1)
+      do { try stream.write(Data([0x20])) } catch { closed = true }
+    }
+
+    #expect(closed, "the service closed the connection that never finished its request")
+    #expect(Date().timeIntervalSince(started) < 3, "it did so near the deadline")
+  }
+
+  @Test func test_aRequestThatArrivesInTime_isAnswered_andLaterDeadlinesHarmNoOneElse() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(storeFolder: folder, requestDeadline: 0.4)
+    defer { host.stop() }
+
+    #expect(ownerCredentialSucceeds(host), "a normal request is answered")
+    Thread.sleep(forTimeInterval: 0.6)
+    let later = try SocketExchange.call(
+      socketPath: host.socketPath, request: WireRequest(token: nil, operation: "no.such.op"),
+      maximumFrame: host.frameMaximum)
+
+    #expect(
+      later.failure?.code == .badRequest,
+      "the deadline of the first connection did not touch the next one")
+  }
+}
