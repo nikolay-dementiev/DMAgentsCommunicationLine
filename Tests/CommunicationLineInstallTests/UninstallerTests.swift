@@ -1,5 +1,6 @@
 import CommunicationLineInstall
 import CommunicationLineWire
+import Darwin
 import Foundation
 import Testing
 
@@ -138,6 +139,24 @@ struct UninstallerTests {
     #expect(world.exists(world.layout.serviceBinary), "the programs are untouched")
     #expect(world.exists(world.layout.manifestURL), "the manifest is untouched")
     #expect(world.launchd.calls == callsBefore, "the service was not stopped")
+  }
+
+  @Test func test_deleteData_whileAServiceHoldsTheStoreLock_refusesAndDeletesNothing() throws {
+    let world = try World(pending: [0])
+    let lockPath = world.layout.storeFolder.appendingPathComponent("commline.lock").path
+    let descriptor = open(lockPath, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+    defer { close(descriptor) }
+    #expect(flock(descriptor, LOCK_EX | LOCK_NB) == 0, "the test plays the running service")
+
+    #expect(throws: UninstallError.self, "a running service means the store is not ours to delete")
+    {
+      _ = try world.uninstaller().uninstall(deleteData: true)
+    }
+
+    #expect(world.exists(world.layout.databaseURL), "the database is untouched")
+    #expect(world.exists(world.layout.ownerTokenURL), "the tokens are untouched")
+    #expect(
+      world.exists(world.layout.manifestURL), "the manifest is kept so that this can be retried")
   }
 
   @Test func test_deleteData_withNoPendingMail_removesTheStoreToo() throws {
