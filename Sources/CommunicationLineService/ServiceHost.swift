@@ -28,6 +28,7 @@ public final class ServiceHost: @unchecked Sendable {
   private let reporter: any FailureReporter
   private let state = NSCondition()
   private var isStopped = false
+  private var isFinished = false
   private var activeConnections: Set<Int32> = []
 
   private init(
@@ -63,7 +64,8 @@ public final class ServiceHost: @unchecked Sendable {
     return host
   }
 
-  /// Stops listening, removes the socket, closes the open connections and releases the lock.
+  /// Stops listening, answers parked waits, lets running requests finish for a moment, then closes
+  /// what is left, the store and the instance lock. Returns when all of that is done.
   public func stop() {
     state.lock()
     guard !isStopped else {
@@ -71,23 +73,33 @@ public final class ServiceHost: @unchecked Sendable {
       return
     }
     isStopped = true
-    for descriptor in activeConnections { shutdown(descriptor, SHUT_RDWR) }
     state.unlock()
     unlink(socketPath)
+    runtime.cancelWaits()
     state.lock()
-    // The accept loop notices the flag within one poll interval; open connections get a moment.
-    let deadline = Date().addingTimeInterval(2)
-    while (!acceptLoopEnded || !activeConnections.isEmpty) && state.wait(until: deadline) {}
-    state.broadcast()
+    // The accept loop notices the flag within one poll interval; running requests get a moment.
+    awaitIdle(for: 2)
+    for descriptor in activeConnections { shutdown(descriptor, SHUT_RDWR) }
+    awaitIdle(for: 1)
     state.unlock()
     runtime.close()
     lock.release()
+    state.lock()
+    isFinished = true
+    state.broadcast()
+    state.unlock()
   }
 
-  /// Blocks until ``stop()`` has been called.
+  /// Waits, with the state lock held, until the accept loop and all connections are gone.
+  private func awaitIdle(for seconds: TimeInterval) {
+    let deadline = Date().addingTimeInterval(seconds)
+    while (!acceptLoopEnded || !activeConnections.isEmpty) && state.wait(until: deadline) {}
+  }
+
+  /// Blocks until ``stop()`` has finished: the store is closed and the instance lock released.
   public func waitUntilStopped() {
     state.lock()
-    while !isStopped { state.wait() }
+    while !isFinished { state.wait() }
     state.unlock()
   }
 
@@ -151,6 +163,11 @@ public final class ServiceHost: @unchecked Sendable {
         continue
       }
       state.lock()
+      guard !isStopped else {
+        state.unlock()
+        close(connection)
+        return
+      }
       activeConnections.insert(connection)
       state.unlock()
       Thread.detachNewThread { self.serve(connection) }
@@ -201,7 +218,13 @@ public final class ServiceHost: @unchecked Sendable {
       tv_sec: Int(requestTimeout),
       tv_usec: Int32((requestTimeout.truncatingRemainder(dividingBy: 1)) * 1_000_000))
     for option in [SO_RCVTIMEO, SO_SNDTIMEO] {
-      setsockopt(descriptor, SOL_SOCKET, option, &timeout, socklen_t(MemoryLayout<timeval>.size))
+      let applied = setsockopt(
+        descriptor, SOL_SOCKET, option, &timeout, socklen_t(MemoryLayout<timeval>.size))
+      if applied != 0 {
+        reporter.report(
+          ServiceHostError.system(operation: "setsockopt timeout", code: errno),
+          operation: "connection setup")
+      }
     }
   }
 

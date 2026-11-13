@@ -22,8 +22,13 @@ public final class ServiceRuntime {
   /// The largest frame the service reads or writes, from the `service.frame_max` setting at start.
   public let frameMaximum: Int
   private let store: SQLiteStore
+  private let arrival: InProcessMailArrival
 
-  private init(dispatcher: RequestDispatcher, frameMaximum: Int, store: SQLiteStore) {
+  private init(
+    dispatcher: RequestDispatcher, frameMaximum: Int, store: SQLiteStore,
+    arrival: InProcessMailArrival
+  ) {
+    self.arrival = arrival
     self.dispatcher = dispatcher
     self.frameMaximum = frameMaximum
     self.store = store
@@ -48,15 +53,22 @@ public final class ServiceRuntime {
     let settingsStore = SQLiteSettingsStore(store: store)
     let settings = SettingsService(
       catalog: catalog, store: settingsStore, clock: clock, authenticator: identity)
+    let arrival = InProcessMailArrival()
     let messages = MessageService(
       store: SQLiteMessageStore(store: store), rights: SQLiteRightsStore(store: store),
       authenticator: identity, settings: settings, identifiers: UUIDIdentifierSource(),
-      clock: clock, arrival: InProcessMailArrival())
+      clock: clock, arrival: arrival)
     let frameMaximum = try frameMaximum(catalog: catalog, store: settingsStore)
     let dispatcher = RequestDispatcher(
       identity: identity, rights: rights, settings: settings, messages: messages,
       reporter: reporter)
-    return ServiceRuntime(dispatcher: dispatcher, frameMaximum: frameMaximum, store: store)
+    return ServiceRuntime(
+      dispatcher: dispatcher, frameMaximum: frameMaximum, store: store, arrival: arrival)
+  }
+
+  /// Answers every parked `wait` now, as if its time had run out.
+  public func cancelWaits() {
+    arrival.close()
   }
 
   /// Closes the database. The dispatcher answers `internal` to anything that arrives later.

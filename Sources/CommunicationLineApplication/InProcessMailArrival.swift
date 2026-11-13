@@ -10,12 +10,22 @@ public final class InProcessMailArrival: MailArrival, @unchecked Sendable {
   private let condition = NSCondition()
   private var generations: [PrincipalID: Int] = [:]
   private var parked = 0
+  private var isClosed = false
 
   public init() {}
 
   /// How many callers are parked right now.
   public var parkedWaiterCount: Int {
     condition.withLock { parked }
+  }
+
+  /// Ends every parked wait as timed out and makes later waits return at once. Called when the
+  /// service stops, so that a waiter is answered while the store is still open.
+  public func close() {
+    condition.withLock {
+      isClosed = true
+      condition.broadcast()
+    }
   }
 
   public func ticket(for recipient: PrincipalID) -> ArrivalTicket {
@@ -37,6 +47,7 @@ public final class InProcessMailArrival: MailArrival, @unchecked Sendable {
       parked += 1
       defer { parked -= 1 }
       while generations[recipient, default: 0] == ticket.value {
+        if isClosed { return .timedOut }
         // `wait(until:)` returns false once the deadline has passed.
         guard condition.wait(until: deadline) else {
           return generations[recipient, default: 0] == ticket.value ? .timedOut : .signalled
