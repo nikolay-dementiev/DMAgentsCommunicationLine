@@ -88,10 +88,13 @@ struct WireMessageTests {
   }
 
   @Test func test_everyErrorCode_belongsToOneClass() {
-    #expect(WireErrorCode.unknownToken.errorClass == .authentication, "a bad token is authentication")
+    #expect(
+      WireErrorCode.unknownToken.errorClass == .authentication, "a bad token is authentication")
     #expect(WireErrorCode.ownerRequired.errorClass == .permission, "owner only is permission")
-    #expect(WireErrorCode.recipientRefused.errorClass == .permission, "a refused send is permission")
-    #expect(WireErrorCode.unknownPrincipal.errorClass == .notFound, "unknown principal is not found")
+    #expect(
+      WireErrorCode.recipientRefused.errorClass == .permission, "a refused send is permission")
+    #expect(
+      WireErrorCode.unknownPrincipal.errorClass == .notFound, "unknown principal is not found")
     #expect(WireErrorCode.bodyTooLarge.errorClass == .invalidInput, "a limit is invalid input")
     #expect(WireErrorCode.badRequest.errorClass == .request, "a malformed request is request")
     #expect(WireErrorCode.internal.errorClass == .internal, "internal is internal")
