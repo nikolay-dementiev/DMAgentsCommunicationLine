@@ -1,3 +1,5 @@
+import CommunicationLineDomain
+import CommunicationLineService
 import Darwin
 import Foundation
 import Testing
@@ -11,11 +13,16 @@ final class EndToEndWorld: @unchecked Sendable {
   private let commline: URL
   private let serviceExecutable: URL
   private var service: Child?
+  private var inProcessService: ServiceHost?
+  private let clock: EndToEndClock?
   private var ownerToken = ""
   private var fileCounter = 0
   private let lock = NSLock()
 
-  init() throws {
+  /// With a `clock` the service runs inside the test process on that clock, which the test moves;
+  /// the commands are still separate processes talking to it over the socket.
+  init(clock: EndToEndClock? = nil) throws {
+    self.clock = clock
     commline = try builtExecutable("commline")
     serviceExecutable = try builtExecutable("commline-service")
     try FileManager.default.createDirectory(
@@ -31,6 +38,11 @@ final class EndToEndWorld: @unchecked Sendable {
   // MARK: - Service
 
   func startService() throws {
+    if let clock {
+      inProcessService = try ServiceHost.start(
+        storeFolder: URL(fileURLWithPath: store.path, isDirectory: true), clock: clock)
+      return
+    }
     let child = try Child(serviceExecutable, [store.path])
     service = child
     let deadline = Date().addingTimeInterval(10)
@@ -43,6 +55,11 @@ final class EndToEndWorld: @unchecked Sendable {
 
   /// SIGTERM, then the exit status of the service (nil when it did not stop).
   func stopService() -> Int32? {
+    if let inProcessService {
+      self.inProcessService = nil
+      inProcessService.stop()
+      return 0
+    }
     guard let service else { return nil }
     self.service = nil
     service.terminate()
@@ -117,5 +134,17 @@ final class EndToEndWorld: @unchecked Sendable {
       throw ProcessError.didNotStart("\(what) exited \(result.status): \(result.err)")
     }
     return result
+  }
+}
+
+/// A clock the test moves by hand, for a service that runs inside the test process.
+final class EndToEndClock: WallClock, @unchecked Sendable {
+  private let lock = NSLock()
+  private var instant = Date(timeIntervalSince1970: 1_800_000_000)
+
+  func now() -> Date { lock.withLock { instant } }
+
+  func advance(seconds: TimeInterval) {
+    lock.withLock { instant = instant.addingTimeInterval(seconds) }
   }
 }
