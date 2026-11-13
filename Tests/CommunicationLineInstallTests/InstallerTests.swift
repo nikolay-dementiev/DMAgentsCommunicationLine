@@ -216,9 +216,9 @@ struct InstallerTests {
     try FileManager.default.createDirectory(
       at: resource.deletingLastPathComponent(), withIntermediateDirectories: true)
     FileManager.default.createFile(atPath: resource.path, contents: Data("{}".utf8))
-    FileManager.default.createFile(
-      atPath: world.executables.url.appendingPathComponent("unrelated.bundle").path,
-      contents: Data("x".utf8))
+    try FileManager.default.createDirectory(
+      at: world.executables.url.appendingPathComponent("Unrelated.bundle"),
+      withIntermediateDirectories: true)
 
     _ = try world.installer.install()
 

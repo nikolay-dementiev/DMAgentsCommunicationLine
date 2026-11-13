@@ -103,7 +103,7 @@ public struct Uninstaller {
 
   private func requireInsideHome(_ manifest: Manifest) throws {
     let home = layout.home.standardizedFileURL.path + "/"
-    for path in manifest.files + [manifest.storeFolder] {
+    for path in manifest.files + manifest.folders + [manifest.storeFolder] {
       let resolved = URL(fileURLWithPath: path).standardizedFileURL.path
       guard resolved.hasPrefix(home) else { throw UninstallError.unsafeManifest(path) }
     }
@@ -145,6 +145,14 @@ public struct Uninstaller {
     var removed: [String] = []
     for path in manifest.files where path != manifestPath {
       if try unlinkFile(path) { removed.append(path) }
+    }
+    for folder in manifest.folders where FileManager.default.fileExists(atPath: folder) {
+      do {
+        try FileManager.default.removeItem(atPath: folder)
+      } catch {
+        throw UninstallError.filesystem("\(folder): \(error)")
+      }
+      removed.append(folder)
     }
     if try unlinkFile(manifestPath) { removed.append(manifestPath) }
     rmdir(layout.binFolder.path)

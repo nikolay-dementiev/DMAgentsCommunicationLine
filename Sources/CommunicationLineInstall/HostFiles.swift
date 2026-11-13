@@ -37,6 +37,15 @@ enum HostFiles {
     }
   }
 
+  /// Replaces the folder at `target` with a copy of `source`. The old copy is removed first, which
+  /// is safe because the service that reads it is not running during an install.
+  static func copyFolder(from source: URL, to target: URL) throws {
+    if FileManager.default.fileExists(atPath: target.path) {
+      try FileManager.default.removeItem(at: target)
+    }
+    try FileManager.default.copyItem(at: source, to: target)
+  }
+
   /// Creates the file empty with `mode` unless it exists; an existing file keeps its contents.
   static func ensureFile(at url: URL, mode: mode_t) throws {
     let descriptor = open(url.path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, mode)

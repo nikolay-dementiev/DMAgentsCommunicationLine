@@ -9,11 +9,17 @@ public struct Manifest: Codable, Equatable, Sendable {
   public var version = 1
   /// Absolute paths of the files to remove. The store folder is never listed: it holds the data.
   public var files: [String]
+  /// Absolute paths of folders to remove with everything inside them: the resource bundles that
+  /// were copied next to the programs.
+  public var folders: [String]
   public var registrations: [Registration]
   public var storeFolder: String
 
-  public init(files: [String], registrations: [Registration], storeFolder: String) {
+  public init(
+    files: [String], folders: [String] = [], registrations: [Registration], storeFolder: String
+  ) {
     self.files = files
+    self.folders = folders
     self.registrations = registrations
     self.storeFolder = storeFolder
   }

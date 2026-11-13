@@ -53,6 +53,8 @@ public struct InstallReport: Equatable, Sendable, CustomStringConvertible {
 public struct Installer {
   /// How long to wait for the service to answer after it was loaded.
   public static let readinessSeconds: TimeInterval = 15
+  /// The resource bundles of this package are named after it.
+  private static let bundlePrefix = "CommunicationLine_"
 
   private let layout: HostLayout
   private let executableFolder: URL
@@ -80,9 +82,10 @@ public struct Installer {
       let upgraded = FileManager.default.fileExists(atPath: layout.manifestURL.path)
       try unloadIfLoaded()
       try prepareFolders()
+      let bundles = try placeResourceBundles()
       try place(programs)
       try writePlist()
-      try writeManifest()
+      try writeManifest(folders: bundles)
       try launchd.bootstrap(plist: layout.plistURL, userID: userID)
       let issued = try provideOwnerToken()
       return InstallReport(
@@ -138,17 +141,33 @@ public struct Installer {
     }
   }
 
+  /// The service reads its defaults from a resource bundle that sits next to the program, so the
+  /// bundles of this package travel with it. Returns the installed folders.
+  private func placeResourceBundles() throws -> [String] {
+    let found = try FileManager.default.contentsOfDirectory(
+      at: executableFolder, includingPropertiesForKeys: [.isDirectoryKey]
+    ).filter {
+      $0.lastPathComponent.hasPrefix(Self.bundlePrefix) && $0.pathExtension == "bundle"
+        && !isFile($0)
+    }
+    return try found.map { source in
+      let target = layout.binFolder.appendingPathComponent(source.lastPathComponent)
+      try HostFiles.copyFolder(from: source, to: target)
+      return target.path
+    }
+  }
+
   private func writePlist() throws {
     try HostFiles.replace(
       try LaunchAgentPlist.data(layout: layout), at: layout.plistURL, mode: 0o644)
   }
 
-  private func writeManifest() throws {
+  private func writeManifest(folders: [String]) throws {
     let manifest = Manifest(
       files: [
         layout.clientBinary.path, layout.serviceBinary.path, layout.plistURL.path,
         layout.manifestURL.path,
-      ],
+      ], folders: folders,
       registrations: [.launchAgent(label: HostLayout.launchAgentLabel, userID: userID)],
       storeFolder: layout.storeFolder.path)
     try HostFiles.replace(try manifest.encoded(), at: layout.manifestURL, mode: 0o600)
