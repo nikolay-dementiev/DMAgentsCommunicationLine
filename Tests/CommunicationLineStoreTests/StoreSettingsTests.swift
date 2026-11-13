@@ -122,6 +122,24 @@ import Testing
       "the stored audit record was not rewritten")
   }
 
+  @Test func test_audit_aRowWithIdMinusOne_cannotBlockTheTrail() throws {
+    let (settings, scratch) = try makeSUT()
+    let raw = try RawDatabase(path: scratch.storePath)
+
+    #expect(throws: RawDatabaseError.self, "an explicit id of -1 is refused") {
+      try raw.execute(
+        """
+        INSERT INTO settings_audit (id, at_ms, actor, key, scope, subject, new_value)
+        VALUES (-1, 99, 'x', 'demo.limit', 'global', '', '1')
+        """)
+    }
+    _ = try settings.apply(.integer(7), to: limit, actor: "owner", at: instant)
+
+    #expect(
+      try raw.integer("SELECT count(*) FROM settings_audit") == 1,
+      "the next ordinary change is recorded")
+  }
+
   @Test func test_storedValues_unreadableStoredValue_isReportedNotIgnored() throws {
     let (settings, scratch) = try makeSUT()
     let raw = try RawDatabase(path: scratch.storePath)

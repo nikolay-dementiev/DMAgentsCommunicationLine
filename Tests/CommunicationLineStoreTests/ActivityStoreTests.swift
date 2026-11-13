@@ -101,6 +101,24 @@ import Testing
       "the stored record was not rewritten")
   }
 
+  @Test func test_aRowWithIdMinusOne_cannotBlockTheLog() throws {
+    let fixture = try Fixture()
+    let raw = try fixture.identity.raw()
+
+    #expect(throws: RawDatabaseError.self, "an explicit id of -1 is refused") {
+      try raw.execute(
+        """
+        INSERT INTO activity (id, at_ms, actor, operation, outcome, targets)
+        VALUES (-1, 99, 'x', 'send', 'ok', '[]')
+        """)
+    }
+    try fixture.activity.append(fixture.entry("send"))
+
+    #expect(
+      try raw.integer("SELECT count(*) FROM activity") == 1,
+      "the next ordinary record is stored")
+  }
+
   @Test func test_aFailedTransaction_takesItsRecordsWithIt() throws {
     let fixture = try Fixture()
 
