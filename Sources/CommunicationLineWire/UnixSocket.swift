@@ -10,11 +10,33 @@ public enum UnixSocketError: Error, Equatable {
 /// A connected stream socket (or any descriptor) used as a frame source and sink.
 public final class FileDescriptorStream: ByteSource, ByteSink, @unchecked Sendable {
   public let descriptor: Int32
+  /// When set, every read and write gives up with `ETIMEDOUT` once this moment has passed, however
+  /// many reads and writes it took to get there.
+  public let deadline: Date?
   private let lock = NSLock()
   private var isClosed = false
 
-  public init(descriptor: Int32) {
+  public init(descriptor: Int32, deadline: Date? = nil) {
     self.descriptor = descriptor
+    self.deadline = deadline
+  }
+
+  /// Waits until the descriptor is ready for `events`, or throws once the deadline has passed.
+  private func awaitReady(_ events: Int32, operation: String) throws {
+    guard let deadline else { return }
+    while true {
+      let remaining = deadline.timeIntervalSinceNow
+      guard remaining > 0 else {
+        throw UnixSocketError.system(operation: operation, code: ETIMEDOUT)
+      }
+      var watched = pollfd(fd: descriptor, events: Int16(events), revents: 0)
+      let milliseconds = Int32(min(remaining * 1000 + 1, Double(Int32.max)))
+      let ready = poll(&watched, 1, milliseconds)
+      if ready > 0 { return }
+      if ready < 0, errno != EINTR {
+        throw UnixSocketError.system(operation: operation, code: errno)
+      }
+    }
   }
 
   deinit { close() }
@@ -24,6 +46,7 @@ public final class FileDescriptorStream: ByteSource, ByteSink, @unchecked Sendab
     let chunk = min(count, 65_536)
     var buffer = [UInt8](repeating: 0, count: chunk)
     while true {
+      try awaitReady(POLLIN, operation: "read")
       let received = buffer.withUnsafeMutableBytes {
         Darwin.read(descriptor, $0.baseAddress, chunk)
       }
@@ -37,6 +60,7 @@ public final class FileDescriptorStream: ByteSource, ByteSink, @unchecked Sendab
     var offset = 0
     let bytes = [UInt8](data)
     while offset < bytes.count {
+      try awaitReady(POLLOUT, operation: "write")
       let sent = bytes.withUnsafeBytes {
         // The loop runs only while bytes remain, so the base address exists.
         Darwin.write(descriptor, $0.baseAddress! + offset, bytes.count - offset)
@@ -104,25 +128,32 @@ public enum UnixSocket {
 }
 
 public enum UnixSocketClient {
-  public static func connect(path: String) throws -> FileDescriptorStream {
+  /// Connects to the socket at `path`. With a `deadline`, the connection attempt and every later
+  /// read and write on the stream stop at that moment: a service that accepts and then says
+  /// nothing cannot hold the caller.
+  public static func connect(path: String, deadline: Date? = nil) throws -> FileDescriptorStream {
     try UnixSocket.requireFits(path: path)
     let descriptor = try UnixSocket.makeStreamSocket()
+    let flags = fcntl(descriptor, F_GETFL)
+    if deadline != nil { _ = fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) }
     let result = try UnixSocket.withAddress(path: path) { Darwin.connect(descriptor, $0, $1) }
     guard result == 0 else {
-      let code = errno
+      // A full listen queue answers a non-blocking connect with EAGAIN instead of waiting.
+      let code = errno == EAGAIN || errno == EINPROGRESS ? ETIMEDOUT : errno
       Darwin.close(descriptor)
       throw UnixSocketError.system(operation: "connect", code: code)
     }
-    return FileDescriptorStream(descriptor: descriptor)
+    if deadline != nil { _ = fcntl(descriptor, F_SETFL, flags) }
+    return FileDescriptorStream(descriptor: descriptor, deadline: deadline)
   }
 }
 
 /// One request and its one response over a fresh connection.
 public enum SocketExchange {
-  public static func call(socketPath: String, request: WireRequest, maximumFrame: Int) throws
-    -> WireResponse
-  {
-    let stream = try UnixSocketClient.connect(path: socketPath)
+  public static func call(
+    socketPath: String, request: WireRequest, maximumFrame: Int, deadline: Date? = nil
+  ) throws -> WireResponse {
+    let stream = try UnixSocketClient.connect(path: socketPath, deadline: deadline)
     let codec = FrameCodec(maximumSize: maximumFrame)
     try codec.writeFrame(try WireCoding.encode(request), to: stream)
     guard let answer = try codec.readFrame(from: stream) else { throw FrameError.truncated }

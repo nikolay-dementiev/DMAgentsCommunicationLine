@@ -208,8 +208,12 @@ public struct Installer {
 
   /// Returns true when a new owner credential was issued.
   private func provideOwnerToken() throws -> Bool {
+    // One deadline for the whole start: the wait for the socket, the probe and the credential
+    // request all draw on the same time.
+    let deadline = Date().addingTimeInterval(readinessSeconds)
     do {
-      try readiness.waitUntilAnswering(socket: layout.socketURL, within: readinessSeconds)
+      try readiness.waitUntilAnswering(
+        socket: layout.socketURL, within: max(0, deadline.timeIntervalSinceNow))
     } catch {
       throw InstallError.serviceNotReady("\(error); see \(layout.logURL.path)")
     }
@@ -217,9 +221,9 @@ public struct Installer {
     let response: WireResponse
     do {
       response = try connect(layout.socketURL.path).exchange(
-        WireRequest(token: nil, operation: "owner.credential"))
+        WireRequest(token: nil, operation: "owner.credential"), deadline: deadline)
     } catch {
-      throw InstallError.serviceNotReady("\(error)")
+      throw InstallError.serviceNotReady("\(error); see \(layout.logURL.path)")
     }
     guard response.isSuccess, case .object(let fields)? = response.result,
       case .string(let token)? = fields["token"]

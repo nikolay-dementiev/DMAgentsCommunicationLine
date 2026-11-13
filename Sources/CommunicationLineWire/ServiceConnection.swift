@@ -13,6 +13,17 @@ public enum ServiceConnectionError: Error, Equatable {
 /// One request to the service and its one answer.
 public protocol ServiceConnection {
   func exchange(_ request: WireRequest) throws -> WireResponse
+
+  /// The same, giving up with ``ServiceConnectionError/unreachable(_:)`` once `deadline` has passed,
+  /// whatever part of the exchange is under way.
+  func exchange(_ request: WireRequest, deadline: Date) throws -> WireResponse
+}
+
+extension ServiceConnection {
+  /// For a connection that has no clock of its own, such as a test double.
+  public func exchange(_ request: WireRequest, deadline: Date) throws -> WireResponse {
+    try exchange(request)
+  }
 }
 
 /// The connection over the Unix-domain socket of a running service.
@@ -28,9 +39,18 @@ public struct SocketServiceConnection: ServiceConnection {
   }
 
   public func exchange(_ request: WireRequest) throws -> WireResponse {
+    try exchange(request, deadline: nil)
+  }
+
+  public func exchange(_ request: WireRequest, deadline: Date) throws -> WireResponse {
+    try exchange(request, deadline: Optional(deadline))
+  }
+
+  private func exchange(_ request: WireRequest, deadline: Date?) throws -> WireResponse {
     do {
       return try SocketExchange.call(
-        socketPath: socketPath, request: request, maximumFrame: Self.frameLimit)
+        socketPath: socketPath, request: request, maximumFrame: Self.frameLimit,
+        deadline: deadline)
     } catch UnixSocketError.system(let operation, let code) {
       let reason = String(cString: strerror(code))
       throw ServiceConnectionError.unreachable("\(operation) \(socketPath): \(reason)")

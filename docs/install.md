@@ -26,10 +26,14 @@ In this order:
 5. Writes the LaunchAgent plist.
 6. Writes the manifest.
 7. Loads the plist with `launchctl bootstrap gui/<uid>`.
-8. Waits up to 15 seconds for the socket to answer. A service that never starts fails the install with a
-   non-zero status and an error that names the service log. The install does not wait longer.
+8. Waits up to 15 seconds for the service to answer a request on its socket. A listener that only accepts
+   a connection, or answers with something that is not a response, does not count. The probe is a request
+   without a token, which the service refuses and records in its activity log. A service that never starts
+   fails the install with a non-zero status and an error that names the service log.
 9. If `owner.token` does not exist yet, issues the owner credential and writes it there. The command
-   prints the path of the file, never the token.
+   prints the path of the file, never the token. Steps 8 and 9 share the same 15 seconds: connecting,
+   sending and waiting for the answer all stop at one deadline, so a service that stops answering cannot
+   hold the install.
 
 ## What it writes
 
