@@ -51,3 +51,7 @@ Planned for 0.2 or later:
 - backticks or newlines in `--home` can break the generated instruction text;
 - `wait --until-mail` keeps retrying while the service is gone for good;
 - an owner recovery is not written to the activity log.
+- text output does not escape the zero-width and directional marks U+200B to U+200F, U+061C, U+2060 and U+FEFF;
+- `uninstall` and `owner recover` assume the service runs under launchd; a service started by hand is not stopped first;
+- paths under the home folder are checked by name and final link only, not by every parent folder;
+- `launchctl print` failures other than "not found" (for example no graphical session) now stop install and uninstall with an error.

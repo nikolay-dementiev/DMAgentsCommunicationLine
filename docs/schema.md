@@ -127,3 +127,5 @@ New and open until the v0.1 release.
 |---|---|
 | `activity_id_is_never_minus_one` | An insert that leaves the id -1 in `activity` is rolled back. In a BEFORE INSERT trigger SQLite shows `NEW.id` as -1 when the insert gave no id, so a stored row with id -1 would make the replace guard of version 4 refuse every later insert. |
 | `settings_audit_id_is_never_minus_one` | The same for `settings_audit` and the guard of version 5. |
+
+Version 6 does not repair a database that already holds a row with id -1 in `activity` or `settings_audit`. Such a row could only be written by an explicit insert, and versions 4 and 5 were never released, so only a development database can carry one; it has to be recreated.
