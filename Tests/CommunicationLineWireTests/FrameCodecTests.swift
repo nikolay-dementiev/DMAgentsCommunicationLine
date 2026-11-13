@@ -40,7 +40,8 @@ struct FrameCodecTests {
 
   @Test func test_read_atACleanEndOfStream_returnsNil() throws {
     #expect(
-      try codec.readFrame(from: FixedSource([])) == nil, "no bytes before a frame means a clean end")
+      try codec.readFrame(from: FixedSource([])) == nil, "no bytes before a frame means a clean end"
+    )
   }
 
   @Test func test_read_anOversizedFrame_isRefusedBeforeItsBodyIsRead() throws {
