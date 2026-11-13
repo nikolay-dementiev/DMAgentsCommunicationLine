@@ -38,7 +38,8 @@ final class SQLiteDatabase {
   func close() {
     lock.lock()
     defer { lock.unlock() }
-    sqlite3_close(handle)
+    // `_v2` never refuses: with a statement still open, the connection closes once it is finalized.
+    sqlite3_close_v2(handle)
     handle = nil
   }
 

@@ -20,10 +20,12 @@ public final class FileDescriptorStream: ByteSource, ByteSink, @unchecked Sendab
   deinit { close() }
 
   public func read(upTo count: Int) throws -> Data {
-    var buffer = [UInt8](repeating: 0, count: count)
+    // A declared frame size comes from the peer: never allocate it all before a byte has arrived.
+    let chunk = min(count, 65_536)
+    var buffer = [UInt8](repeating: 0, count: chunk)
     while true {
       let received = buffer.withUnsafeMutableBytes {
-        Darwin.read(descriptor, $0.baseAddress, count)
+        Darwin.read(descriptor, $0.baseAddress, chunk)
       }
       if received >= 0 { return Data(buffer.prefix(received)) }
       if errno == EINTR { continue }
@@ -36,6 +38,7 @@ public final class FileDescriptorStream: ByteSource, ByteSink, @unchecked Sendab
     let bytes = [UInt8](data)
     while offset < bytes.count {
       let sent = bytes.withUnsafeBytes {
+        // The loop runs only while bytes remain, so the base address exists.
         Darwin.write(descriptor, $0.baseAddress! + offset, bytes.count - offset)
       }
       if sent >= 0 {

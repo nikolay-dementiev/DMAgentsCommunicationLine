@@ -92,7 +92,8 @@ public final class ServiceRuntime {
     let stored = try store.storedValues(key: key, family: nil, principal: nil)
     let value = definition.effectiveValue(principal: nil, family: nil, global: stored.global)
     guard case .integer(let bytes) = value, bytes >= 1, bytes <= Int64(Int32.max) else {
-      throw ServiceRuntimeError.invalidFrameMaximum(0)
+      throw ServiceRuntimeError.invalidFrameMaximum(
+        { if case .integer(let raw) = value { return raw } else { return 0 } }())
     }
     return Int(bytes)
   }

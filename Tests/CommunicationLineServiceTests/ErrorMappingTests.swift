@@ -17,7 +17,7 @@ private final class RecordingReporter: FailureReporter, @unchecked Sendable {
 }
 
 private struct SecretDetailError: Error, CustomStringConvertible {
-  var description: String { "the secret path /Users/someone/db" }
+  var description: String { "the secret path /private/example/db" }
 }
 
 struct ErrorMappingTests {
@@ -32,7 +32,7 @@ struct ErrorMappingTests {
       response.failure?.message.contains("secret") == false,
       "the detail never reaches the caller")
     #expect(
-      reporter.operations == ["send: the secret path /Users/someone/db"],
+      reporter.operations == ["send: the secret path /private/example/db"],
       "the detail reaches the reporter once")
   }
 
