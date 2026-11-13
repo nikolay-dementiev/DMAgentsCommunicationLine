@@ -22,6 +22,7 @@ struct AgentSetupTests {
       case "principal.create": return .success(.object(["id": .string("p-0001")]))
       case "credential.issue":
         return .success(.object(["token": .string(AgentSetupTests.agentToken)]))
+      case "principal.disable": return .success()
       default: return .failure(code: .badRequest, message: "unexpected")
       }
     }
@@ -139,6 +140,42 @@ struct AgentSetupTests {
     #expect(
       try Manifest.read(from: world.layout.manifestURL).files.contains(command),
       "uninstall will know to remove it")
+  }
+
+  @Test func test_aDanglingLinkAtTheCommandFile_isRefusedBeforeAnythingIsCreated() throws {
+    let world = try World()
+    let command = world.layout.claudeCommandsFolder.appendingPathComponent("commline-alice.md")
+    try FileManager.default.createDirectory(
+      at: command.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(
+      atPath: command.path, withDestinationPath: "/nonexistent-target")
+
+    #expect(throws: AgentSetupError.commandFileExists(command.path)) {
+      _ = try world.add(client: .claudeCode)
+    }
+
+    #expect(world.service.requests.isEmpty, "no principal was created for a setup that cannot end")
+  }
+
+  @Test func test_whenAFileCannotBeWritten_thePrincipalIsDisabledAndTheErrorSaysSo() throws {
+    let world = try World()
+    let agents = world.layout.storeFolder.appendingPathComponent("agents", isDirectory: true)
+    try FileManager.default.createDirectory(at: agents, withIntermediateDirectories: true)
+    FileManager.default.createFile(
+      atPath: agents.appendingPathComponent("p-0001.md").path, contents: Data("old".utf8))
+
+    var message = ""
+    do {
+      _ = try world.add()
+    } catch {
+      message = "\(error)"
+    }
+
+    #expect(
+      world.service.requests.map(\.operation).last == "principal.disable",
+      "the half-made agent is switched off")
+    #expect(message.contains("p-0001"), "the error names the principal that was left")
+    #expect(message.contains("disabled"), "and says it was disabled")
   }
 
   @Test func test_withoutAClient_noCommandFileIsWritten() throws {

@@ -58,6 +58,20 @@ import Testing
       "two and one pending; the acknowledged delivery is not pending")
   }
 
+  @Test func test_totalPending_countsEveryPendingDelivery_evenOneWhoseRecipientRowIsGone() throws {
+    let fixture = try Fixture()
+    let world = fixture.world
+    try world.mail(from: world.alphaToken, to: world.alphaPeer, "one")
+    try world.mail(from: world.alphaToken, to: world.alphaHead, "two")
+    let raw = try RawDatabase(path: world.identity.scratch.storePath)
+    try raw.execute("PRAGMA foreign_keys = OFF")
+    try raw.execute("DELETE FROM principals WHERE id = '\(world.alphaPeer.id.rawValue)'")
+
+    let total = try SQLiteHealthStore(store: world.identity.store).totalPending()
+
+    #expect(total == 2, "the count does not depend on the principals table")
+  }
+
   @Test func test_aDeliveryPendingPastTheThreshold_isOverdue_withItsAge() throws {
     let fixture = try Fixture()
     let world = fixture.world

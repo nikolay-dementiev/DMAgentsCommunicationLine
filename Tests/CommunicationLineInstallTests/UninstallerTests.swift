@@ -107,7 +107,8 @@ struct UninstallerTests {
 
   @Test func test_uninstall_removesTheFoldersTheManifestNames_andNoOtherFolder() throws {
     let world = try World()
-    let ours = world.layout.binFolder.appendingPathComponent("Ours.bundle", isDirectory: true)
+    let ours = world.layout.binFolder.appendingPathComponent(
+      "CommunicationLine_Ours.bundle", isDirectory: true)
     let theirs = world.layout.binFolder.appendingPathComponent("Theirs.bundle", isDirectory: true)
     try world.plant(ours.appendingPathComponent("Contents/data"))
     try world.plant(theirs.appendingPathComponent("Contents/data"))
@@ -196,6 +197,55 @@ struct UninstallerTests {
 
     #expect(world.exists(victim), "a file outside the home is not removed")
     #expect(world.exists(world.layout.serviceBinary), "nor is anything else")
+  }
+
+  @Test func test_aManifestEntryTheInstallNeverWrites_isRefusedAndNothingIsRemoved() throws {
+    for kind in ["file", "folder", "store"] {
+      let world = try World()
+      let documents = world.home.url.appendingPathComponent("Documents", isDirectory: true)
+      let note = documents.appendingPathComponent("note.txt")
+      try world.plant(note)
+      var manifest = try Manifest.read(from: world.layout.manifestURL)
+      switch kind {
+      case "file": manifest.files.append(note.path)
+      case "folder": manifest.folders.append(documents.path)
+      default: manifest.storeFolder = documents.path
+      }
+      try manifest.write(to: world.layout.manifestURL)
+
+      #expect(throws: UninstallError.self, "a stray \(kind) entry is refused") {
+        _ = try world.uninstaller().uninstall(deleteData: true)
+      }
+
+      #expect(world.exists(note), "\(kind): the user's file is untouched")
+      #expect(world.exists(world.layout.serviceBinary), "\(kind): nothing else was removed")
+    }
+  }
+
+  @Test func test_aManifestEntryThatIsASymbolicLink_isRefused() throws {
+    let world = try World()
+    let victim = world.home.url.appendingPathComponent("victim.txt")
+    try world.plant(victim)
+    try FileManager.default.removeItem(at: world.layout.serviceBinary)
+    try FileManager.default.createSymbolicLink(
+      at: world.layout.serviceBinary, withDestinationURL: victim)
+
+    #expect(throws: UninstallError.self) {
+      _ = try world.uninstaller().uninstall(deleteData: false)
+    }
+
+    #expect(world.exists(victim), "the link target is untouched")
+    #expect(world.exists(world.layout.clientBinary), "nothing was removed")
+  }
+
+  @Test func test_deleteData_whenTheStoreIsAlreadyGone_stillFinishes() throws {
+    let world = try World()
+    try FileManager.default.removeItem(at: world.layout.storeFolder)
+
+    let report = try world.uninstaller().uninstall(deleteData: true)
+
+    #expect(report.storeDeleted, "nothing was left to delete, and that is fine")
+    #expect(!world.exists(world.layout.manifestURL), "the manifest is gone too")
   }
 
   @Test func test_everyUninstallError_readsAsASentence() {

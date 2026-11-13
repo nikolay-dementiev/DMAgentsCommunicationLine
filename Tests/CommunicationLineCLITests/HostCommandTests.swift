@@ -113,6 +113,20 @@ struct HostCommandTests {
     return (status, harness)
   }
 
+  @Test func test_agentAdd_refusesNamesWithControlCharactersOrBackticks() {
+    for bad in ["al\nice", "al`ice", "al\u{1b}ice"] {
+      for field in ["--name", "--family"] {
+        var arguments = ["--family", "ops", "--role", "agent", "--name", "alice"]
+        if let position = arguments.firstIndex(of: field) { arguments[position + 1] = bad }
+        let outcome = addAgent(arguments)
+
+        #expect(
+          outcome.status == CommandExitStatus.usage.rawValue, "\(field) \(bad.debugDescription)")
+        #expect(outcome.harness.host.agents.isEmpty, "nothing was created")
+      }
+    }
+  }
+
   @Test func test_agentAdd_handsTheOwnerTokenAndTheRequestToTheHost() {
     let outcome = addAgent(["--family", "ops", "--role", "agent", "--name", "alice"])
 

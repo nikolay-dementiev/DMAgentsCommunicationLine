@@ -208,6 +208,22 @@ struct InstallerTests {
     #expect(manifest.storeFolder == world.layout.storeFolder.path, "where the data is")
   }
 
+  @Test func test_anUpgrade_keepsTheMailCommandsTheManifestAlreadyNames() throws {
+    let world = try World()
+    _ = try world.installer.install()
+    let command = world.layout.claudeCommandsFolder.appendingPathComponent("commline-lead.md")
+    let stray = world.home.url.appendingPathComponent("Documents/note.txt")
+    var manifest = try Manifest.read(from: world.layout.manifestURL)
+    manifest.files += [command.path, stray.path]
+    try manifest.write(to: world.layout.manifestURL)
+
+    _ = try world.installer.install()
+
+    let files = try Manifest.read(from: world.layout.manifestURL).files
+    #expect(files.contains(command.path), "a command file written by agent add is still listed")
+    #expect(!files.contains(stray.path), "an entry the install would never write is dropped")
+  }
+
   @Test func test_install_carriesTheResourceBundlesTheServiceReadsAtStart() throws {
     let world = try World()
     let bundle = world.executables.url.appendingPathComponent(
