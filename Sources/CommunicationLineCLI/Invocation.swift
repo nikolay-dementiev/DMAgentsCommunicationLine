@@ -8,7 +8,8 @@ struct UsageError: Error, Equatable {
 /// A command line split into its words and options, before any command is looked up.
 struct Invocation: Sendable {
   static let valueOptions: Set<String> = [
-    "store", "socket", "token-file", "to", "subject", "body", "body-file", "after", "timeout",
+    "store", "socket", "token-file", "to", "subject", "body", "body-file", "after", "limit",
+    "timeout",
     "family", "role", "name", "reader-principal", "reader-family", "target-principal",
     "target-family", "expires-at-ms", "scope",
   ]

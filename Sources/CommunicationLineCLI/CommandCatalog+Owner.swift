@@ -22,6 +22,19 @@ extension CommandCatalog {
           "name": .string(try required(invocation, "name")),
         ]
       }),
+    Command(
+      words: ["activity"], operation: "activity.list", needsToken: true, positionals: [],
+      options: ["after", "limit"], presentation: .activity,
+      arguments: { invocation, _ in
+        var arguments: [String: WireValue] = [:]
+        if let after = invocation.single("after") {
+          arguments["after"] = .integer(try integer(after, "--after"))
+        }
+        if let limit = invocation.single("limit") {
+          arguments["limit"] = .integer(try integer(limit, "--limit", minimum: 1))
+        }
+        return arguments
+      }),
     principalCommand("disable"),
     principalCommand("enable"),
     Command(

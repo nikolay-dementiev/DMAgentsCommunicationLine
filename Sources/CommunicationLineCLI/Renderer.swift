@@ -40,6 +40,7 @@ enum Renderer {
         [$0["from"], $0["to"]].map(string).joined(separator: "\t")
       }
     case .grants: return array(fields["grants"]).map(grant)
+    case .activity: return activity(fields)
     }
   }
 
@@ -47,6 +48,19 @@ enum Renderer {
     var lines = array(fields["entries"]).map {
       [$0["id"], $0["sender"], $0["created_at_ms"], $0["subject"]].map(scalarOrEmpty).joined(
         separator: "\t")
+    }
+    if case .integer(let next)? = fields["next"] { lines.append("next: \(next)") }
+    return lines
+  }
+
+  private static func activity(_ fields: [String: WireValue]) -> [String] {
+    var lines = array(fields["records"]).map { record -> String in
+      var targets: [String] = []
+      if case .array(let items)? = record["targets"] { targets = items.map { string($0) } }
+      return [
+        scalar(record["id"]), scalar(record["at_ms"]), string(record["actor"]),
+        string(record["operation"]), string(record["outcome"]), targets.joined(separator: ","),
+      ].joined(separator: "\t")
     }
     if case .integer(let next)? = fields["next"] { lines.append("next: \(next)") }
     return lines
