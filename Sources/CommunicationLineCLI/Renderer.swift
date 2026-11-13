@@ -107,7 +107,7 @@ enum Renderer {
     if case .array(let items)? = fields["recipients"] { recipients = items.map { string($0) } }
     return [
       "From: \(string(fields["sender"]))", "To: \(recipients.joined(separator: ", "))",
-      "Subject: \(string(fields["subject"]))", "", string(fields["body"]),
+      "Subject: \(string(fields["subject"]))", "", body(fields["body"]),
     ]
   }
 
@@ -131,15 +131,39 @@ enum Renderer {
   }
 
   private static func string(_ value: WireValue?) -> String {
-    if case .string(let text)? = value { return text }
-    return scalar(value)
+    scalar(value)
+  }
+
+  /// A message body keeps its line breaks and tabs so that it stays readable; every other control
+  /// character is escaped like in any other field.
+  private static func body(_ value: WireValue?) -> String {
+    guard case .string(let text)? = value else { return "" }
+    return escaped(text, keepingLayout: true)
+  }
+
+  /// Text chosen by an agent can carry terminal control sequences. Printing it raw would let one
+  /// agent drive the terminal of the person reading it, so control characters are written as
+  /// `\u{1b}`. `--json` is not affected: it prints the text exactly.
+  static func escaped(_ text: String, keepingLayout: Bool = false) -> String {
+    var result = ""
+    for scalar in text.unicodeScalars {
+      let value = scalar.value
+      let isControl = value < 0x20 || value == 0x7F || (0x80...0x9F).contains(value)
+      let isLayout = keepingLayout && (value == 0x0A || value == 0x09)
+      if isControl && !isLayout {
+        result += "\\u{" + String(value, radix: 16) + "}"
+      } else {
+        result.unicodeScalars.append(scalar)
+      }
+    }
+    return result
   }
 
   private static func scalarOrEmpty(_ value: WireValue?) -> String { scalar(value) }
 
   private static func scalar(_ value: WireValue?) -> String {
     switch value {
-    case .string(let text)?: return text
+    case .string(let text)?: return escaped(text)
     case .integer(let number)?: return String(number)
     case .bool(let flag)?: return flag ? "true" : "false"
     default: return ""

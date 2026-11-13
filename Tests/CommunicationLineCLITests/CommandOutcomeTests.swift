@@ -197,7 +197,9 @@ struct CommandOutcomeTests {
 
       let output = outcome.harness.standardOutput
       #expect(
-        !output.unicodeScalars.contains { $0.value == 0x1B || $0.value == 0x07 || $0.value == 0x9B },
+        !output.unicodeScalars.contains {
+          $0.value == 0x1B || $0.value == 0x07 || $0.value == 0x9B
+        },
         "\(answer.arguments) prints no raw control byte: \(output.debugDescription)")
       #expect(output.contains("\\u{1b}"), "\(answer.arguments) shows the escape instead")
     }
