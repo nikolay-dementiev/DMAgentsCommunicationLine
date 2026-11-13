@@ -84,37 +84,99 @@ struct SystemLaunchdTests {
   }
 }
 
-/// A descriptor written by one thread and closed by another, so every access takes the lock.
-private final class DescriptorBox: @unchecked Sendable {
+/// A listener that behaves as a script says for each request: it answers, stays silent or sends
+/// bytes that are not a response.
+private final class ScriptedResponder: @unchecked Sendable {
+  enum Behavior { case answer, silent, garbage }
+
   private let lock = NSLock()
-  private var descriptor: Int32 = -1
+  private var listener: Int32
+  private var held: [Int32] = []
+  private let behavior: @Sendable (String) -> Behavior
 
-  func store(_ value: Int32) { lock.withLock { descriptor = value } }
-
-  func closeIfOpen() {
-    let open = lock.withLock { () -> Int32 in
-      defer { descriptor = -1 }
-      return descriptor
+  init(path: String, behavior: @escaping @Sendable (String) -> Behavior) throws {
+    self.behavior = behavior
+    listener = try UnixSocket.makeStreamSocket()
+    _ = try UnixSocket.withAddress(path: path) { Darwin.bind(listener, $0, $1) }
+    guard Darwin.listen(listener, 8) == 0 else { throw POSIXError(.EIO) }
+    let descriptor = listener
+    Thread.detachNewThread { [self] in
+      while true {
+        let connection = accept(descriptor, nil, nil)
+        if connection < 0 { return }
+        lock.withLock { held.append(connection) }
+        Thread.detachNewThread { [self] in serve(connection) }
+      }
     }
-    if open >= 0 { close(open) }
+  }
+
+  func stop() {
+    let open = lock.withLock { () -> [Int32] in
+      defer { held = [] }
+      return held + [listener]
+    }
+    for descriptor in open { shutdown(descriptor, SHUT_RDWR) }
+    for descriptor in open { close(descriptor) }
+  }
+
+  private func serve(_ connection: Int32) {
+    let stream = FileDescriptorStream(descriptor: connection)
+    let codec = FrameCodec(maximumSize: 65_536)
+    guard let payload = try? codec.readFrame(from: stream),
+      let request = try? WireCoding.decodeRequest(payload)
+    else { return }
+    switch behavior(request.operation) {
+    case .answer:
+      let response = WireResponse.failure(code: .tokenRequired, message: "a token is required")
+      if let data = try? WireCoding.encode(response) { try? codec.writeFrame(data, to: stream) }
+    case .garbage:
+      try? codec.writeFrame(Data("not a response".utf8), to: stream)
+    case .silent:
+      // The stream closes its descriptor when it goes away, so keep it open for a good while.
+      Thread.sleep(forTimeInterval: 20)
+    }
   }
 }
 
 struct SocketReadinessTests {
-  private func listen(at path: String) throws -> Int32 {
-    let descriptor = try UnixSocket.makeStreamSocket()
-    _ = try UnixSocket.withAddress(path: path) { Darwin.bind(descriptor, $0, $1) }
-    guard Darwin.listen(descriptor, 4) == 0 else { throw POSIXError(.EIO) }
-    return descriptor
+  private func respond(at path: String, _ behavior: ScriptedResponder.Behavior) throws
+    -> ScriptedResponder
+  {
+    try ScriptedResponder(path: path) { _ in behavior }
   }
 
-  @Test func test_aSocketThatAccepts_isReady() throws {
+  @Test func test_aSocketThatAnswersARequest_isReady() throws {
     let home = try TemporaryHome()
     let socket = home.url.appendingPathComponent("s.sock")
-    let listener = try listen(at: socket.path)
-    defer { close(listener) }
+    let responder = try respond(at: socket.path, .answer)
+    defer { responder.stop() }
 
     try SocketReadiness(interval: 0.01).waitUntilAnswering(socket: socket, within: 2)
+  }
+
+  @Test func test_aSocketThatAcceptsButNeverAnswers_isNotReady() throws {
+    let home = try TemporaryHome()
+    let socket = home.url.appendingPathComponent("silent.sock")
+    let responder = try respond(at: socket.path, .silent)
+    defer { responder.stop() }
+    let started = Date()
+
+    #expect(throws: InstallError.self, "a listener that says nothing is not a service") {
+      try SocketReadiness(interval: 0.01).waitUntilAnswering(socket: socket, within: 0.5)
+    }
+
+    #expect(Date().timeIntervalSince(started) < 3, "it gives up at the deadline")
+  }
+
+  @Test func test_aSocketThatAnswersWithSomethingElse_isNotReady() throws {
+    let home = try TemporaryHome()
+    let socket = home.url.appendingPathComponent("garbage.sock")
+    let responder = try respond(at: socket.path, .garbage)
+    defer { responder.stop() }
+
+    #expect(throws: InstallError.self, "bytes that are not a response are not a service") {
+      try SocketReadiness(interval: 0.01).waitUntilAnswering(socket: socket, within: 0.5)
+    }
   }
 
   @Test func test_aSocketThatNeverAppears_failsWithinTheTimeLimit() throws {
@@ -132,12 +194,67 @@ struct SocketReadinessTests {
   @Test func test_aSocketThatAppearsLate_isWaitedFor() throws {
     let home = try TemporaryHome()
     let socket = home.url.appendingPathComponent("late.sock")
-    let listener = DescriptorBox()
+    let responder = ResponderBox()
     DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-      listener.store((try? self.listen(at: socket.path)) ?? -1)
+      responder.store(try? ScriptedResponder(path: socket.path) { _ in .answer })
     }
-    defer { listener.closeIfOpen() }
+    defer { responder.stop() }
 
     try SocketReadiness(interval: 0.01).waitUntilAnswering(socket: socket, within: 3)
   }
+
+  @Test func test_anOwnerRequestThatNeverGetsAnAnswer_failsAtTheSharedDeadline() throws {
+    let home = try TemporaryHome()
+    let executables = try TemporaryHome()
+    let layout = HostLayout(home: home.url)
+    for name in ["commline", "commline-service"] {
+      FileManager.default.createFile(
+        atPath: executables.url.appendingPathComponent(name).path, contents: Data(name.utf8))
+    }
+    try FileManager.default.createDirectory(
+      at: layout.storeFolder, withIntermediateDirectories: true,
+      attributes: [.posixPermissions: 0o700])
+    // The service answers the probe and then goes quiet on the credential request.
+    let responder = try ScriptedResponder(path: layout.socketURL.path) {
+      $0 == "owner.credential" ? .silent : .answer
+    }
+    defer { responder.stop() }
+    nonisolated(unsafe) let installer = Installer(
+      layout: layout, executableFolder: executables.url, userID: 501, launchd: RecordingLaunchd(),
+      readiness: SocketReadiness(interval: 0.01),
+      connect: { SocketServiceConnection(socketPath: $0) }, readinessSeconds: 1)
+    let outcome = ResultBox()
+    let done = DispatchSemaphore(value: 0)
+    Thread.detachNewThread {
+      outcome.store(Result { _ = try installer.install() })
+      done.signal()
+    }
+
+    let finished = done.wait(timeout: .now() + 5) == .success
+
+    #expect(finished, "the install did not hang on a service that stopped answering")
+    if finished {
+      #expect(throws: InstallError.self, "it reports that the service is not ready") {
+        try outcome.value?.get()
+      }
+    }
+  }
+}
+
+private final class ResponderBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var responder: ScriptedResponder?
+
+  func store(_ value: ScriptedResponder?) { lock.withLock { responder = value } }
+
+  func stop() { lock.withLock { responder }?.stop() }
+}
+
+private final class ResultBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var stored: Result<Void, any Error>?
+
+  var value: Result<Void, any Error>? { lock.withLock { stored } }
+
+  func store(_ result: Result<Void, any Error>) { lock.withLock { stored = result } }
 }
