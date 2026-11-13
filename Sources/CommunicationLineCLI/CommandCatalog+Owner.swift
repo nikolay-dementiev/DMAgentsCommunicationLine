@@ -35,6 +35,12 @@ extension CommandCatalog {
         }
         return arguments
       }),
+    Command(
+      words: ["health"], operation: "health", needsToken: true, positionals: [], options: [],
+      presentation: .health, arguments: { _, _ in [:] }),
+    Command(
+      words: ["health", "cleanup"], operation: "health.cleanup", needsToken: true,
+      positionals: [], options: [], presentation: .cleanup, arguments: { _, _ in [:] }),
     principalCommand("disable"),
     principalCommand("enable"),
     Command(

@@ -15,6 +15,8 @@ enum Presentation: Sendable {
   case setting
   case grantID
   case activity
+  case health
+  case cleanup
 }
 
 /// One command: its words, positionals, options and the request it makes.

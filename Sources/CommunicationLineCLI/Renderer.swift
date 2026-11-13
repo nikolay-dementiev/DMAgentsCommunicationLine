@@ -41,6 +41,9 @@ enum Renderer {
       }
     case .grants: return array(fields["grants"]).map(grant)
     case .activity: return activity(fields)
+    case .health: return health(fields)
+    case .cleanup:
+      return ["deliveries", "messages", "activity"].map { "\($0): \(scalar(fields[$0]))" }
     }
   }
 
@@ -64,6 +67,36 @@ enum Renderer {
     }
     if case .integer(let next)? = fields["next"] { lines.append("next: \(next)") }
     return lines
+  }
+
+  private static func health(_ fields: [String: WireValue]) -> [String] {
+    var lines = ["started: \(scalar(fields["started_at_ms"]))"]
+    if case .object(let storage)? = fields["storage"] {
+      lines.append(
+        "storage: \(scalar(storage["used_bytes"])) of \(scalar(storage["budget_bytes"])) bytes, "
+          + "warning at \(scalar(storage["warning_percent"]))%")
+    }
+    if case .array(let warnings)? = fields["warnings"] {
+      lines += warnings.map { "warning: \(string($0))" }
+    }
+    lines += array(fields["pending"]).map {
+      "pending: \(string($0["principal"]))\t\(scalar($0["count"]))"
+    }
+    lines.append("overdue: \(scalar(fields["overdue_count"]))")
+    lines += array(fields["overdue"]).map {
+      "\(string($0["message"]))\t\(string($0["recipient"]))\t\(scalar($0["age_seconds"]))s"
+    }
+    lines.append(lastCleanup(fields["last_cleanup"]))
+    return lines
+  }
+
+  private static func lastCleanup(_ value: WireValue?) -> String {
+    guard case .object(let fields)? = value else { return "last cleanup: none" }
+    guard case .bool(true)? = fields["ok"] else {
+      return "last cleanup: \(scalar(fields["at_ms"])) failed"
+    }
+    return "last cleanup: \(scalar(fields["at_ms"])) deliveries=\(scalar(fields["deliveries"])) "
+      + "messages=\(scalar(fields["messages"])) activity=\(scalar(fields["activity"]))"
   }
 
   private static func message(_ fields: [String: WireValue]) -> [String] {
