@@ -1,4 +1,5 @@
 import CommunicationLineCLI
+import CommunicationLineWire
 import Darwin
 import Foundation
 

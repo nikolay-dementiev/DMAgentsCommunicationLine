@@ -1,4 +1,3 @@
-import CommunicationLineWire
 import Darwin
 import Foundation
 
@@ -18,7 +17,7 @@ public protocol ServiceConnection {
 public struct SocketServiceConnection: ServiceConnection {
   /// The largest frame the catalog allows the service to use; the service refuses anything above
   /// its own `service.frame_max` by name.
-  static let frameLimit = 16_777_216
+  public static let frameLimit = 16_777_216
 
   private let socketPath: String
 
