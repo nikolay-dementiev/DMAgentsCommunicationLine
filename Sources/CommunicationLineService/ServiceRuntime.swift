@@ -82,9 +82,14 @@ public final class ServiceRuntime {
         store: SQLiteRetentionStore(store: store), settings: settings, transactions: transactions,
         clock: clock),
       clock: clock)
+    let health = HealthService(
+      store: SQLiteHealthStore(store: store), settings: settings,
+      storage: StorageService(store: SQLiteStorageStore(store: store), settings: settings),
+      cleanup: cleanup, identity: identity, clock: clock, startedAt: clock.now())
     let dispatcher = RequestDispatcher(
       identity: identity, rights: rights, settings: settings, messages: messages,
-      activity: activity, cleanup: cleanup, transactions: transactions, reporter: reporter)
+      activity: activity, cleanup: cleanup, health: health,
+      transactions: transactions, reporter: reporter)
     return ServiceRuntime(
       dispatcher: dispatcher, frameMaximum: frameMaximum,
       cleanupInterval: try positiveSeconds("cleanup.interval", settings), cleanup: cleanup,

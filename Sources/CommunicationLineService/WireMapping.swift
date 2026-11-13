@@ -94,4 +94,44 @@ enum WireMapping {
       "targets": .array(record.targets.map { .string($0) }),
     ])
   }
+
+  static func health(_ report: HealthReport) -> WireValue {
+    .object([
+      "started_at_ms": milliseconds(report.startedAt),
+      "pending": .array(
+        report.pending.map {
+          .object(["principal": .string($0.principal.rawValue), "count": .integer(Int64($0.count))])
+        }),
+      "overdue_count": .integer(Int64(report.overdueCount)),
+      "overdue": .array(
+        report.overdue.map {
+          .object([
+            "message": .string($0.message.rawValue), "recipient": .string($0.recipient.rawValue),
+            "age_seconds": .integer(Int64($0.age)),
+          ])
+        }),
+      "storage": .object([
+        "used_bytes": .integer(report.storage.usedBytes),
+        "budget_bytes": .integer(report.storage.budgetBytes),
+        "warning_percent": .integer(Int64(report.storage.warningPercent)),
+      ]),
+      "warnings": .array(report.warnings.map { .string($0.rawValue) }),
+      "last_cleanup": report.lastCleanup.map(cleanup) ?? .null,
+    ])
+  }
+
+  private static func cleanup(_ report: CleanupReport) -> WireValue {
+    var fields: [String: WireValue] = ["at_ms": milliseconds(report.at)]
+    switch report.outcome {
+    case .success(let result):
+      fields["ok"] = .bool(true)
+      fields["deliveries"] = .integer(Int64(result.deliveries))
+      fields["messages"] = .integer(Int64(result.messages))
+      fields["activity"] = .integer(Int64(result.activity))
+    case .failure:
+      // The reason went to the service's own log; the report says only that the run failed.
+      fields["ok"] = .bool(false)
+    }
+    return .object(fields)
+  }
 }

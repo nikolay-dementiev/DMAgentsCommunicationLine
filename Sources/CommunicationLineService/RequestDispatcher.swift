@@ -20,6 +20,7 @@ enum Operation: String {
   case settingGet = "setting.get"
   case settingSet = "setting.set"
   case activityList = "activity.list"
+  case health
   case healthCleanup = "health.cleanup"
 }
 
@@ -34,13 +35,14 @@ public struct RequestDispatcher: @unchecked Sendable {
   let messages: MessageService
   let activity: ActivityService
   let cleanup: CleanupRunner
+  let health: HealthService
   private let transactions: any TransactionRunner
   private let reporter: any FailureReporter
 
   init(
     identity: IdentityService, rights: RightsService, settings: SettingsService,
     messages: MessageService, activity: ActivityService, cleanup: CleanupRunner,
-    transactions: any TransactionRunner, reporter: any FailureReporter
+    health: HealthService, transactions: any TransactionRunner, reporter: any FailureReporter
   ) {
     self.identity = identity
     self.rights = rights
@@ -48,6 +50,7 @@ public struct RequestDispatcher: @unchecked Sendable {
     self.messages = messages
     self.activity = activity
     self.cleanup = cleanup
+    self.health = health
     self.transactions = transactions
     self.reporter = reporter
   }
@@ -108,6 +111,8 @@ public struct RequestDispatcher: @unchecked Sendable {
       return try issueOwnerCredential(replacing: try optionalToken(of: request))
     case .activityList:
       return try performActivity(token: try token(of: request), arguments: arguments)
+    case .health:
+      return WireMapping.health(try health.report(ownerToken: try token(of: request)))
     case .healthCleanup:
       return try performCleanup(token: try token(of: request))
     default:
