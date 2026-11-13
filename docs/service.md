@@ -34,9 +34,11 @@ Inside the store folder (created with mode 0700 when missing, refused when it is
 - **Peer check.** Every accepted connection is checked with `getpeereid`. A peer whose effective user ID
   differs from the service's own is closed without an answer. The folder mode and the socket mode are
   the first barrier; this check is the second.
-- **Stop.** SIGTERM or SIGINT stops accepting, removes the socket, shuts open connections down, closes
-  the database (the write-ahead log is folded into the database file) and releases the lock. Parked
-  waits end with the connection.
+- **Stop.** SIGTERM or SIGINT stops accepting, removes the socket and answers every parked `wait` as
+  timed out (outcome `timeout`). Requests that are running get up to two seconds to finish; the
+  connections still open after that are shut down. Then the database is closed (the write-ahead log
+  is folded into the database file) and the lock is released. The process exits only after all of
+  this.
 - **Path length.** A Unix-domain socket path is limited to 103 bytes on macOS; a longer store folder
   path cannot be used.
 - **No network.** The service listens on the local socket only.
@@ -51,6 +53,9 @@ frame   = length payload
 length  = 4 bytes, big endian, the size of payload (1 .. service.frame_max)
 payload = one JSON document, UTF-8
 ```
+
+A request or response nested deeper than 32 levels of arrays and objects is `bad_request`; this is
+checked before decoding, so a frame of brackets cannot exhaust the stack of a connection thread.
 
 A length above `service.frame_max` (default 2097152, read once at start; see [settings](settings.md)) is
 answered with `frame_too_large` after the four length bytes, before any payload byte is read, and the
@@ -140,4 +145,9 @@ Each code belongs to one class; the CLI maps the class to its exit status.
 
 - A parked `wait` authenticates when it starts; a token revoked meanwhile ends it only at its timeout.
 - The number of parked waiters and connections is not bounded yet (planned with the quotas).
+- `SO_RCVTIMEO` restarts on every received byte, so a client that sends one byte just inside the
+  request timeout can hold a connection thread; there is no overall request deadline or connection
+  cap yet (planned with the quotas).
+- Any process of the same user that connects first after a fresh install can claim the owner
+  credential with `owner.credential`; the installer should call it right after the first start.
 - The service reads `store.busy_timeout` and `service.frame_max` once, at start.
