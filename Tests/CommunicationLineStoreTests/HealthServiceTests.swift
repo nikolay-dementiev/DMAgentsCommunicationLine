@@ -116,6 +116,62 @@ import Testing
     #expect(report.overdue.count == 2, "only one page of them is listed")
   }
 
+  /// A health store that remembers the most deliveries any single read returned.
+  private final class MeasuringStore: HealthStore, @unchecked Sendable {
+    private let wrapped: any HealthStore
+    private(set) var mostReturned = 0
+
+    init(_ wrapped: any HealthStore) { self.wrapped = wrapped }
+
+    func pendingRecipients() throws -> [PendingRecipient] { try wrapped.pendingRecipients() }
+
+    func overdue(of recipient: PrincipalID, createdAtOrBefore cutoff: Date, limit: Int) throws
+      -> OverdueSlice
+    {
+      let slice = try wrapped.overdue(of: recipient, createdAtOrBefore: cutoff, limit: limit)
+      mostReturned = max(mostReturned, slice.oldest.count)
+      return slice
+    }
+  }
+
+  @Test func test_theReport_neverReadsMoreDeliveriesThanOnePage() throws {
+    let fixture = try Fixture()
+    let world = fixture.world
+    let measuring = MeasuringStore(SQLiteHealthStore(store: world.identity.store))
+    let health = HealthService(
+      store: measuring, settings: world.settings,
+      storage: StorageService(
+        store: SQLiteStorageStore(store: world.identity.store), settings: world.settings),
+      cleanup: fixture.cleanup, identity: world.identity.service, clock: world.clock,
+      startedAt: fixture.startedAt)
+    try fixture.set("messaging.page_size", to: 2)
+    for index in 0..<5 { try world.mail(from: world.alphaToken, to: world.alphaPeer, "m\(index)") }
+    fixture.advance(seconds: 3600)
+
+    let report = try health.report(ownerToken: world.owner)
+
+    #expect(report.overdueCount == 5, "all five are counted")
+    #expect(report.overdue.count == 2, "one page is listed")
+    #expect(measuring.mostReturned <= 2, "the store was asked for one page, not every delivery")
+  }
+
+  @Test func test_overdueFromSeveralRecipients_listsTheOldestAcrossThemAll() throws {
+    let fixture = try Fixture()
+    let world = fixture.world
+    try fixture.set("messaging.page_size", to: 2)
+    let first = try world.mail(from: world.alphaToken, to: world.alphaPeer, "first")
+    fixture.advance(seconds: 10)
+    let second = try world.mail(from: world.alphaToken, to: world.alphaHead, "second")
+    fixture.advance(seconds: 10)
+    try world.mail(from: world.alphaToken, to: world.alphaPeer, "third")
+    fixture.advance(seconds: 3600)
+
+    let report = try fixture.report()
+
+    #expect(report.overdueCount == 3, "every overdue delivery of every recipient is counted")
+    #expect(report.overdue.map(\.message) == [first, second], "the two oldest, whoever holds them")
+  }
+
   @Test func test_aBudgetBelowTheUse_raisesTheStorageWarning() throws {
     let fixture = try Fixture()
 
