@@ -1,6 +1,6 @@
 /// The numbered schema steps of the product. Released versions never change; add a new step instead.
 public enum SchemaMigrations {
-  public static let all: [Migration] = [version1, version2, version3]
+  public static let all: [Migration] = [version1, version2, version3, version4]
 
   /// Version 1: stored settings and their append-only audit trail.
   private static let version1 = Migration(
@@ -176,6 +176,40 @@ public enum SchemaMigrations {
       BEGIN
         SELECT RAISE(ABORT, 'a message cannot be rewritten');
       END
+      """,
+    ])
+
+  /// Version 4: the activity log. Records are never updated; they are deleted only while the
+  /// retention gate is open, which only the retention path of the service opens.
+  private static let version4 = Migration(
+    version: 4,
+    statements: [
+      """
+      CREATE TABLE activity (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at_ms INTEGER NOT NULL,
+        actor TEXT NOT NULL CHECK (actor <> ''),
+        operation TEXT NOT NULL CHECK (operation <> ''),
+        outcome TEXT NOT NULL CHECK (outcome <> ''),
+        targets TEXT NOT NULL
+      )
+      """,
+      "CREATE INDEX activity_by_time ON activity (at_ms)",
+      """
+      CREATE TABLE activity_retention_gate (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        open INTEGER NOT NULL CHECK (open IN (0, 1))
+      )
+      """,
+      "INSERT INTO activity_retention_gate (id, open) VALUES (1, 0)",
+      """
+      CREATE TRIGGER activity_no_update BEFORE UPDATE ON activity
+      BEGIN SELECT RAISE(ABORT, 'activity is append-only'); END
+      """,
+      """
+      CREATE TRIGGER activity_delete_only_by_retention BEFORE DELETE ON activity
+      WHEN (SELECT open FROM activity_retention_gate WHERE id = 1) = 0
+      BEGIN SELECT RAISE(ABORT, 'activity is deleted only by retention'); END
       """,
     ])
 }

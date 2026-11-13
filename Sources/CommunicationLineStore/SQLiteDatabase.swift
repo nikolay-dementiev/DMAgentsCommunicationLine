@@ -19,6 +19,7 @@ enum SQLiteValue: Equatable {
 final class SQLiteDatabase {
   private var handle: OpaquePointer?
   private let lock = NSRecursiveLock()
+  private var transactionDepth = 0
 
   init(path: String) throws {
     let flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX
@@ -78,10 +79,15 @@ final class SQLiteDatabase {
   }
 
   /// Runs `body` inside one write transaction: committed when it returns, rolled back when it throws.
+  /// Called while a transaction of this thread is open, it joins that transaction as a savepoint: its
+  /// work commits or rolls back with the outer one, and a failure inside it undoes only its own part.
   func transaction<Result>(_ body: () throws -> Result) throws -> Result {
     lock.lock()
     defer { lock.unlock() }
+    if transactionDepth > 0 { return try savepoint(body) }
     try execute("BEGIN IMMEDIATE")
+    transactionDepth = 1
+    defer { transactionDepth = 0 }
     let result: Result
     do {
       result = try body()
@@ -110,6 +116,27 @@ final class SQLiteDatabase {
       throw error
     }
     return result
+  }
+
+  private func savepoint<Result>(_ body: () throws -> Result) throws -> Result {
+    transactionDepth += 1
+    defer { transactionDepth -= 1 }
+    let name = "nested\(transactionDepth)"
+    try execute("SAVEPOINT \(name)")
+    do {
+      let result = try body()
+      try execute("RELEASE \(name)")
+      return result
+    } catch {
+      do {
+        try execute("ROLLBACK TO \(name)")
+        try execute("RELEASE \(name)")
+      } catch let rollbackError {
+        throw StoreError.sqlite(
+          operation: "rollback after \(error)", code: SQLITE_ERROR, message: "\(rollbackError)")
+      }
+      throw error
+    }
   }
 
   private func bind(_ value: SQLiteValue, at index: Int32, to statement: OpaquePointer?) throws {
