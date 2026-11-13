@@ -52,11 +52,8 @@ struct DispatcherAgentTests {
     let read = fixture.call("read", token: world.bob.token, ["id": .string(messageID)])
     #expect(try fixture.string(read, "body") == "b", "read returns the body")
     #expect(try fixture.string(read, "family") == "A", "read names the sender's family")
-    #expect(
-      fixture.call("inbox", token: world.bob.token).result != nil
-        && (try fixture.field(fixture.call("inbox", token: world.bob.token), "entries"))
-          != .array([]),
-      "read does not acknowledge")
+    let afterRead = try fixture.field(fixture.call("inbox", token: world.bob.token), "entries")
+    #expect(afterRead != .array([]), "read does not acknowledge")
 
     let acknowledged = fixture.call(
       "acknowledge", token: world.bob.token, ["id": .string(messageID)])

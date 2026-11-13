@@ -15,7 +15,6 @@ final class ServiceFixture: @unchecked Sendable {
   }
 
   deinit {
-    runtime.close()
     try? FileManager.default.removeItem(at: folder)
   }
 
