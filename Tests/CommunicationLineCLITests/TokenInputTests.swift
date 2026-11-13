@@ -42,8 +42,8 @@ struct TokenInputTests {
     let empty = try tokenFile(mode: 0o600, contents: " \n")
     defer { unlink(empty) }
     #expect(throws: TokenInputError.empty) { _ = try reader().read(tokenFile: empty) }
-    #expect(throws: TokenInputError.notRegularFile("/tmp")) {
-      _ = try reader().read(tokenFile: "/tmp")
+    #expect(throws: TokenInputError.notRegularFile("/private/tmp")) {
+      _ = try reader().read(tokenFile: "/private/tmp")
     }
   }
 
@@ -68,9 +68,9 @@ struct TokenInputTests {
   }
 }
 
-struct ExitStatusTests {
+struct CommandExitStatusTests {
   @Test func test_theTableIsStable() {
-    let table: [(ExitStatus, Int32)] = [
+    let table: [(CommandExitStatus, Int32)] = [
       (.success, 0), (.failure, 1), (.usage, 2), (.unreachable, 3), (.authentication, 4),
       (.permission, 5), (.notFound, 6), (.invalidInput, 7), (.protocolError, 8), (.timedOut, 9),
       (.tokenInput, 10),
