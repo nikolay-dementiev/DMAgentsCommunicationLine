@@ -80,6 +80,23 @@ before the manifest, so a failed `--delete-data` can be repeated.
 
 Installing again on a kept store reuses the database and the owner token.
 
+## Recovering the owner token
+
+If `owner.token` is lost, or install failed after the credential was issued but before the file was
+written, run:
+
+```
+commline owner recover [--home <folder>]
+```
+
+It needs no token and no network. It stops the service, revokes every live owner credential in the
+database, issues a new one, writes it to `owner.token` at mode 0600 (replacing the file) and starts the
+service again. It prints the path, never the token. The previous owner token stops working; agent tokens
+are not touched. It refuses to run as root and when commline is not installed. If it fails after the
+service was stopped, run it again; it is safe to repeat. Anyone who can read the store folder can already
+do this, so it adds no access that the account does not have. The recovery is not recorded in the
+activity log.
+
 ## Trust in this release
 
 The basic mode of v0.1 has no separation between agents of one account. Every agent runs as you, so an

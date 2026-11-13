@@ -73,4 +73,8 @@ public protocol IdentityStore {
   ///   expected one, for example because another caller replaced it first.
   func replaceOwnerCredential(
     expectedCurrent: TokenDigest?, with digest: TokenDigest, at instant: Date) throws
+
+  /// Revokes every live owner credential and stores a new one, in one transaction, without asking
+  /// for the old token. Only the host-side recovery uses it, with the service stopped.
+  func forceReplaceOwnerCredential(with digest: TokenDigest, at instant: Date) throws
 }

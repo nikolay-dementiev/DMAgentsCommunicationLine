@@ -53,6 +53,7 @@ These act on the machine, not on the service, and need no `--store`, `--socket` 
 |---|---|---|
 | `install` | `--home <folder>` | Installs the service for the caller. See [install](install.md) |
 | `uninstall` | `--home <folder>`, `--delete-data` | Removes what the install wrote; keeps the store unless `--delete-data` and no mail is pending |
+| `owner recover` | `--home <folder>` | Gives the owner a new token when the token file is lost or was never written. See [install](install.md) |
 
 `agent add` (see [agents](agents.md)) needs `--store` and the owner token, and writes files under the store
 folder and, for a client, under `--home`.

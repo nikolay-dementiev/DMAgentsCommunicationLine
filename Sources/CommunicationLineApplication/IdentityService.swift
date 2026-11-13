@@ -61,6 +61,14 @@ public struct IdentityService: Authenticating {
     return token
   }
 
+  /// Replaces the owner credential without the old token. It is for the account owner on the host,
+  /// who can already read the database file; no wire operation reaches it.
+  public func recoverOwnerCredential() throws -> CredentialToken {
+    let token = try newToken()
+    try store.forceReplaceOwnerCredential(with: token.digest, at: clock.now())
+    return token
+  }
+
   // MARK: - Principals
 
   public func createPrincipal(

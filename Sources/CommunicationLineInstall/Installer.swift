@@ -5,6 +5,8 @@ import Foundation
 public enum InstallError: Error, Equatable {
   /// Install runs under the owner's account and never as root.
   case refusedAsRoot
+  /// There is no manifest, so there is nothing to recover the owner token of.
+  case notInstalled
   case missingExecutable(String)
   case serviceNotReady(String)
   /// The service already has an owner credential but the token file is gone. It is not replaced.
@@ -19,6 +21,8 @@ extension InstallError: CustomStringConvertible {
     switch self {
     case .refusedAsRoot:
       return "install runs under your own account; it does not run as root"
+    case .notInstalled:
+      return "commline is not installed here: there is no manifest, so there is no owner to recover"
     case .missingExecutable(let name):
       return "\(name) was not found next to commline"
     case .serviceNotReady(let reason):
@@ -26,9 +30,9 @@ extension InstallError: CustomStringConvertible {
     case .ownerCredentialUnavailable:
       return
         "the service already has an owner credential but the owner token file is missing; "
-        + "the credential was not replaced"
+        + "the credential was not replaced; run `commline owner recover` to get a new one"
     case .ownerTokenNotWritten(let reason):
-      return "the owner token could not be written: \(reason)"
+      return "the owner token could not be written: \(reason); run `commline owner recover` again"
     case .launchd(let reason): return "launchd refused the request: \(reason)"
     case .filesystem(let reason): return "a file could not be written: \(reason)"
     }

@@ -120,12 +120,23 @@ public final class SQLiteIdentityStore: IdentityStore {
       guard liveDigests == (expectedCurrent.map { [$0.hex] } ?? []) else {
         throw IdentityError.ownerCredentialRequired
       }
-      try store.database.execute(
-        "UPDATE credentials SET revoked_at_ms = ?1 WHERE kind = 'owner' AND revoked_at_ms IS NULL",
-        [.integer(milliseconds)])
-      try store.database.execute(
-        "INSERT INTO credentials (digest, kind, principal_id, issued_at_ms) VALUES (?1, 'owner', NULL, ?2)",
-        [.text(digest.hex), .integer(milliseconds)])
+      try swapOwnerCredential(to: digest, milliseconds: milliseconds)
     }
+  }
+
+  public func forceReplaceOwnerCredential(with digest: TokenDigest, at instant: Date) throws {
+    let milliseconds = try StoreTime.milliseconds(of: instant)
+    try store.database.transaction {
+      try swapOwnerCredential(to: digest, milliseconds: milliseconds)
+    }
+  }
+
+  private func swapOwnerCredential(to digest: TokenDigest, milliseconds: Int64) throws {
+    try store.database.execute(
+      "UPDATE credentials SET revoked_at_ms = ?1 WHERE kind = 'owner' AND revoked_at_ms IS NULL",
+      [.integer(milliseconds)])
+    try store.database.execute(
+      "INSERT INTO credentials (digest, kind, principal_id, issued_at_ms) VALUES (?1, 'owner', NULL, ?2)",
+      [.text(digest.hex), .integer(milliseconds)])
   }
 }

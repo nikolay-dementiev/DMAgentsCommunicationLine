@@ -11,6 +11,9 @@ public protocol HostCommands {
   /// Removes what the install wrote under `home`, or under the home folder of the caller when nil.
   /// The store stays unless `deleteData` is set and no mail is pending.
   func uninstall(home: String?, deleteData: Bool) throws -> [String]
+  /// Gives the owner a new token without the old one, for a lost or never written token file. It
+  /// stops the service while the database changes and starts it again.
+  func recoverOwner(home: String?) throws -> [String]
   /// Creates an agent with the owner's token. Its files go inside `storeFolder`; a mail command for
   /// a client goes under `home`, or under the home folder of the caller when nil.
   func addAgent(storeFolder: String, home: String?, ownerToken: String, request: AgentRequest)
@@ -75,6 +78,15 @@ public struct SystemHostCommands: HostCommands {
       report.storeDeleted
         ? "store deleted: \(report.storeFolder)" : "store kept: \(report.storeFolder)",
     ]
+  }
+
+  public func recoverOwner(home: String?) throws -> [String] {
+    let layout = HostLayout(
+      home: home.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? defaultHome)
+    let report = try OwnerRecovery(
+      layout: layout, userID: userID, launchd: launchd, readiness: readiness
+    ).recover()
+    return "\(report)".split(separator: "\n").map(String.init)
   }
 
   public func addAgent(

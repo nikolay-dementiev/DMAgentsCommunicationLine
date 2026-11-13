@@ -65,8 +65,9 @@ struct OwnerRecoveryTests {
     #expect(report.ownerTokenPath == world.layout.ownerTokenURL.path, "the report names the file")
     #expect(try world.home.mode(of: world.layout.ownerTokenURL) == 0o600, "owner-only file")
     #expect(!"\(report)".contains(text), "the report never holds the token")
-    try World.identity(world.layout) { identity in
-      #expect(try identity.authenticate(fresh) == .owner, "the new token is the owner's")
+    try World.identity(world.layout) { (identity: IdentityService) throws in
+      let actor = try identity.authenticate(fresh)
+      #expect(actor == .owner, "the new token is the owner's")
       #expect(throws: IdentityError.self, "the old token no longer works") {
         _ = try identity.authenticate(world.oldToken)
       }
