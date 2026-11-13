@@ -72,3 +72,28 @@ struct DispatcherCleanupTests {
     #expect(operations.contains("health.cleanup"), "the owner's cleanup request is on record")
   }
 }
+
+struct HealthAfterCleanupTests {
+  @Test func test_health_reportsWhatTheOwnerCleanupDeleted() throws {
+    let fixture = try ServiceFixture()
+    let owner = try fixture.bootstrapOwner()
+    let alice = try fixture.enrol(owner: owner, family: "A", name: "alice")
+    let bob = try fixture.enrol(owner: owner, family: "A", name: "bob")
+    let sent = fixture.call(
+      "send", token: alice.token,
+      ["to": .array([.string(bob.id)]), "subject": .string("s"), "body": .string("b")])
+    _ = fixture.call(
+      "acknowledge", token: bob.token, ["id": .string(try fixture.string(sent, "id"))])
+    fixture.clock.advance(days: 91)
+
+    _ = fixture.call("health.cleanup", token: owner)
+    let health = fixture.call("health", token: owner)
+
+    guard case .object(let last) = try fixture.field(health, "last_cleanup") else {
+      Issue.record("a cleanup ran")
+      return
+    }
+    #expect(last["deliveries"] == .integer(1), "the report holds what that run deleted")
+    #expect(last["messages"] == .integer(1), "and the message")
+  }
+}

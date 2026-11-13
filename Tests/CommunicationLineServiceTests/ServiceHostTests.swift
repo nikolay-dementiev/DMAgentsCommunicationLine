@@ -343,12 +343,8 @@ struct ScheduledCleanupTests {
     return seen
   }
 
-  @Test func test_theService_runsCleanupOnItsOwnInterval() throws {
-    let folder = shortFolder()
-    defer { try? FileManager.default.removeItem(at: folder) }
-    let clock = TestClock()
-    let host = try ServiceHost.start(storeFolder: folder, clock: clock, cleanupInterval: 0.05)
-    defer { host.stop() }
+  /// Sends one message from alice to bob and has bob acknowledge it, over the socket.
+  private func acknowledgedMail(_ host: ServiceHost) throws {
     let owner = try token(try ask(host, "owner.credential"))
     let alice = try ask(
       host, "principal.create", token: owner,
@@ -364,6 +360,15 @@ struct ScheduledCleanupTests {
       host, "send", token: aliceToken,
       ["to": .array([.string(try id(bob))]), "subject": .string("s"), "body": .string("b")])
     _ = try ask(host, "acknowledge", token: bobToken, ["id": .string(try id(sent))])
+  }
+
+  @Test func test_theService_runsCleanupOnItsOwnInterval() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let clock = TestClock()
+    let host = try ServiceHost.start(storeFolder: folder, clock: clock, cleanupInterval: 0.05)
+    defer { host.stop() }
+    try acknowledgedMail(host)
     #expect(
       try waitForCount("messages", 0, in: folder) == 1, "inside the window nothing is deleted")
 
@@ -372,6 +377,23 @@ struct ScheduledCleanupTests {
     #expect(
       try waitForCount("messages", 0, in: folder) == 0,
       "the service deleted the mail by itself once it was past its retention")
+  }
+
+  @Test func test_cleanup_doesNotRunBecauseAConnectionCameAndWent() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let clock = TestClock()
+    let host = try ServiceHost.start(storeFolder: folder, clock: clock, cleanupInterval: 60)
+    defer { host.stop() }
+    try acknowledgedMail(host)
+    clock.advance(days: 91)
+
+    for _ in 0..<5 { _ = try ask(host, "no.such.op") }
+    Thread.sleep(forTimeInterval: 0.5)
+
+    #expect(
+      try RawFile(folder: folder).count("messages") == 1,
+      "cleanup waits for its interval, whatever else the service is doing")
   }
 }
 
