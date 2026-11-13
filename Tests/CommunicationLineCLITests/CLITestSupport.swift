@@ -60,6 +60,9 @@ final class CLIHarness: @unchecked Sendable {
   private(set) var standardOutput = ""
   private(set) var standardError = ""
   private(set) var connectedSockets: [String] = []
+  private(set) var pauses: [TimeInterval] = []
+  /// Folders that exist, as far as the waiter can tell. Everything exists unless a test says not.
+  var missingFolders: Set<String> = []
   private var standardInput: String?
   private let encode: @Sendable (WireValue) throws -> Data
   let host: FakeHost
@@ -83,7 +86,11 @@ final class CLIHarness: @unchecked Sendable {
       },
       tokenReader: TokenReader(standardInput: { self.standardInput }),
       standardOutput: { self.standardOutput += $0 + "\n" },
-      standardError: { self.standardError += $0 + "\n" }, host: host, encode: encode)
+      standardError: { self.standardError += $0 + "\n" }, host: host,
+      environment: RunnerEnvironment(
+        pause: { self.pauses.append($0) },
+        directoryExists: { !self.missingFolders.contains($0) }),
+      encode: encode)
     return runner.run(arguments)
   }
 }
