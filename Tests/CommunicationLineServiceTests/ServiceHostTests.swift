@@ -307,3 +307,70 @@ private final class Box<Value>: @unchecked Sendable {
   var value: Value
   init(_ value: Value) { self.value = value }
 }
+
+struct ScheduledCleanupTests {
+  private func ask(
+    _ host: ServiceHost, _ operation: String, token: String? = nil,
+    _ arguments: [String: WireValue] = [:]
+  ) throws -> WireResponse {
+    try SocketExchange.call(
+      socketPath: host.socketPath,
+      request: WireRequest(token: token, operation: operation, arguments: arguments),
+      maximumFrame: host.frameMaximum)
+  }
+
+  private func token(_ response: WireResponse) throws -> String {
+    guard case .object(let fields)? = response.result, case .string(let value)? = fields["token"]
+    else { throw POSIXError(.EIO) }
+    return value
+  }
+
+  private func id(_ response: WireResponse) throws -> String {
+    guard case .object(let fields)? = response.result, case .string(let value)? = fields["id"]
+    else { throw POSIXError(.EIO) }
+    return value
+  }
+
+  /// Polls the store from outside until `table` has `expected` rows, for at most three seconds.
+  private func waitForCount(_ table: String, _ expected: Int, in folder: URL) throws -> Int {
+    let raw = try RawFile(folder: folder)
+    var seen = try raw.count(table)
+    let deadline = Date().addingTimeInterval(3)
+    while seen != expected && Date() < deadline {
+      Thread.sleep(forTimeInterval: 0.05)
+      seen = try raw.count(table)
+    }
+    return seen
+  }
+
+  @Test func test_theService_runsCleanupOnItsOwnInterval() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let clock = TestClock()
+    let host = try ServiceHost.start(storeFolder: folder, clock: clock, cleanupInterval: 0.05)
+    defer { host.stop() }
+    let owner = try token(try ask(host, "owner.credential"))
+    let alice = try ask(
+      host, "principal.create", token: owner,
+      ["family": .string("A"), "role": .string("agent"), "name": .string("alice")])
+    let bob = try ask(
+      host, "principal.create", token: owner,
+      ["family": .string("A"), "role": .string("agent"), "name": .string("bob")])
+    let aliceToken = try token(
+      try ask(host, "credential.issue", token: owner, ["principal": .string(try id(alice))]))
+    let bobToken = try token(
+      try ask(host, "credential.issue", token: owner, ["principal": .string(try id(bob))]))
+    let sent = try ask(
+      host, "send", token: aliceToken,
+      ["to": .array([.string(try id(bob))]), "subject": .string("s"), "body": .string("b")])
+    _ = try ask(host, "acknowledge", token: bobToken, ["id": .string(try id(sent))])
+    #expect(
+      try waitForCount("messages", 0, in: folder) == 1, "inside the window nothing is deleted")
+
+    clock.advance(days: 91)
+
+    #expect(
+      try waitForCount("messages", 0, in: folder) == 0,
+      "the service deleted the mail by itself once it was past its retention")
+  }
+}

@@ -1,43 +1,7 @@
 import CommunicationLineService
 import CommunicationLineWire
 import Foundation
-import SQLite3
 import Testing
-
-/// A second connection to the service's database file, to look at it from outside.
-private final class RawFile {
-  private var handle: OpaquePointer?
-
-  init(folder: URL) throws {
-    let path = folder.appendingPathComponent(ServiceRuntime.databaseName).path
-    guard sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
-      throw POSIXError(.EIO)
-    }
-  }
-
-  deinit { sqlite3_close(handle) }
-
-  func execute(_ sql: String) throws {
-    guard sqlite3_exec(handle, sql, nil, nil, nil) == SQLITE_OK else { throw POSIXError(.EIO) }
-  }
-
-  /// Every column of every activity record, joined into one text.
-  func activityDump() throws -> String {
-    var statement: OpaquePointer?
-    guard
-      sqlite3_prepare_v2(
-        handle,
-        "SELECT actor || '|' || operation || '|' || outcome || '|' || targets FROM activity",
-        -1, &statement, nil) == SQLITE_OK
-    else { throw POSIXError(.EIO) }
-    defer { sqlite3_finalize(statement) }
-    var lines: [String] = []
-    while sqlite3_step(statement) == SQLITE_ROW {
-      lines.append(String(cString: sqlite3_column_text(statement, 0)))
-    }
-    return lines.joined(separator: "\n")
-  }
-}
 
 struct DispatcherActivityTests {
   private struct Record {

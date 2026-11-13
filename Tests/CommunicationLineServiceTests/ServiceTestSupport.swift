@@ -1,6 +1,8 @@
+import CommunicationLineDomain
 import CommunicationLineService
 import CommunicationLineWire
 import Foundation
+import SQLite3
 
 /// A service runtime on a real store in a short folder under /tmp: a socket path is limited to about
 /// a hundred bytes, which the usual per-test temporary folders exceed.
@@ -8,10 +10,13 @@ final class ServiceFixture: @unchecked Sendable {
   let folder: URL
   let runtime: ServiceRuntime
 
-  init() throws {
+  let clock: TestClock
+
+  init(clock: TestClock = TestClock()) throws {
     let name = "cl-" + UUID().uuidString.prefix(8).lowercased()
     folder = URL(fileURLWithPath: "/tmp/\(name)", isDirectory: true)
-    runtime = try ServiceRuntime.open(storeFolder: folder)
+    self.clock = clock
+    runtime = try ServiceRuntime.open(storeFolder: folder, clock: clock)
   }
 
   deinit {
@@ -58,4 +63,70 @@ final class ServiceFixture: @unchecked Sendable {
 
 enum FixtureError: Error {
   case missing(String, WireResponse)
+}
+
+/// A clock the test moves by hand.
+final class TestClock: WallClock, @unchecked Sendable {
+  private let lock = NSLock()
+  private var instant: Date
+
+  init(start: Date = Date(timeIntervalSince1970: 1_800_000_000)) { instant = start }
+
+  func now() -> Date {
+    lock.lock()
+    defer { lock.unlock() }
+    return instant
+  }
+
+  func advance(days: Double) {
+    lock.lock()
+    instant = instant.addingTimeInterval(days * 86_400)
+    lock.unlock()
+  }
+}
+
+/// A second connection to the service's database file, to look at it from outside.
+final class RawFile {
+  private var handle: OpaquePointer?
+
+  init(folder: URL) throws {
+    let path = folder.appendingPathComponent(ServiceRuntime.databaseName).path
+    guard sqlite3_open_v2(path, &handle, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK else {
+      throw POSIXError(.EIO)
+    }
+  }
+
+  deinit { sqlite3_close(handle) }
+
+  func execute(_ sql: String) throws {
+    guard sqlite3_exec(handle, sql, nil, nil, nil) == SQLITE_OK else { throw POSIXError(.EIO) }
+  }
+
+  /// Every column of every activity record, joined into one text.
+  func activityDump() throws -> String {
+    var statement: OpaquePointer?
+    guard
+      sqlite3_prepare_v2(
+        handle,
+        "SELECT actor || '|' || operation || '|' || outcome || '|' || targets FROM activity",
+        -1, &statement, nil) == SQLITE_OK
+    else { throw POSIXError(.EIO) }
+    defer { sqlite3_finalize(statement) }
+    var lines: [String] = []
+    while sqlite3_step(statement) == SQLITE_ROW {
+      lines.append(String(cString: sqlite3_column_text(statement, 0)))
+    }
+    return lines.joined(separator: "\n")
+  }
+
+  /// The number of rows in `table`.
+  func count(_ table: String) throws -> Int {
+    var statement: OpaquePointer?
+    guard
+      sqlite3_prepare_v2(handle, "SELECT COUNT(*) FROM \(table)", -1, &statement, nil) == SQLITE_OK
+    else { throw POSIXError(.EIO) }
+    defer { sqlite3_finalize(statement) }
+    guard sqlite3_step(statement) == SQLITE_ROW else { throw POSIXError(.EIO) }
+    return Int(sqlite3_column_int64(statement, 0))
+  }
 }
