@@ -81,7 +81,8 @@ struct WireMessageTests {
         "principal_disabled", "owner_required", "agent_required", "unknown_principal",
         "unknown_recipient", "recipient_refused", "message_unavailable", "unknown_grant",
         "unknown_key", "invalid_name", "invalid_rule", "invalid_page_limit", "invalid_setting",
-        "no_recipients", "subject_too_large", "body_too_large", "expiry_in_the_past",
+        "no_recipients", "too_many_recipients", "recipient_inbox_full", "too_many_waiters",
+        "subject_too_large", "body_too_large", "expiry_in_the_past",
         "scope_not_allowed", "subject_required", "subject_not_allowed", "invalid_value",
         "internal",
       ], "the code names are a contract: they change only with a protocol change")
@@ -97,6 +98,12 @@ struct WireMessageTests {
       WireErrorCode.unknownPrincipal.errorClass == .notFound, "unknown principal is not found")
     #expect(WireErrorCode.bodyTooLarge.errorClass == .invalidInput, "a limit is invalid input")
     #expect(WireErrorCode.badRequest.errorClass == .request, "a malformed request is request")
+    #expect(
+      WireErrorCode.tooManyRecipients.errorClass == .invalidInput, "a message that is too wide")
+    #expect(
+      WireErrorCode.recipientInboxFull.errorClass == .request,
+      "a full inbox is not the caller's input")
+    #expect(WireErrorCode.tooManyWaiters.errorClass == .request, "parking is busy")
     #expect(WireErrorCode.internal.errorClass == .internal, "internal is internal")
   }
 

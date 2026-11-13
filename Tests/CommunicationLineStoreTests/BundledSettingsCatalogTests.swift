@@ -23,6 +23,8 @@ import Testing
         "messaging.subject_max": .integer(512),
         "messaging.body_max": .integer(262_144),
         "messaging.page_size": .integer(100),
+        "wire.recipients": .integer(32),
+        "quota.messages.assigned_per_principal": .integer(100_000),
         "service.frame_max": .integer(2_097_152),
       ], "the shipped keys and defaults")
   }

@@ -12,6 +12,7 @@ public struct MessageID: Hashable, Sendable {
 /// Why a message is refused before anything is stored.
 public enum MessageError: Error, Equatable {
   case noRecipients
+  case tooManyRecipients(limit: Int, actual: Int)
   case subjectTooLarge(limit: Int, actual: Int)
   case bodyTooLarge(limit: Int, actual: Int)
 }
@@ -20,15 +21,20 @@ public enum MessageError: Error, Equatable {
 public struct MessageLimits: Equatable, Sendable {
   public let maxSubjectBytes: Int
   public let maxBodyBytes: Int
+  public let maxRecipients: Int
 
-  public init(maxSubjectBytes: Int, maxBodyBytes: Int) {
+  public init(maxSubjectBytes: Int, maxBodyBytes: Int, maxRecipients: Int) {
     self.maxSubjectBytes = maxSubjectBytes
     self.maxBodyBytes = maxBodyBytes
+    self.maxRecipients = maxRecipients
   }
 
-  /// A message needs at least one recipient and must fit both limits. Nothing is stored when this throws.
+  /// A message needs at least one recipient, no more than the recipient limit, and must fit both size limits. Nothing is stored when this throws.
   public func validate(recipientCount: Int, subject: String, body: String) throws {
     guard recipientCount > 0 else { throw MessageError.noRecipients }
+    guard recipientCount <= maxRecipients else {
+      throw MessageError.tooManyRecipients(limit: maxRecipients, actual: recipientCount)
+    }
     let subjectBytes = subject.utf8.count
     guard subjectBytes <= maxSubjectBytes else {
       throw MessageError.subjectTooLarge(limit: maxSubjectBytes, actual: subjectBytes)

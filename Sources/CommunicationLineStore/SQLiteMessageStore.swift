@@ -20,13 +20,17 @@ public final class SQLiteMessageStore: MessageStore {
     let created = try StoreTime.milliseconds(of: message.createdAt)
     try store.database.transaction {
       var recipients: [PrincipalID: Principal] = [:]
+      var pending: [PrincipalID: Int] = [:]
       for id in message.recipients {
-        if let principal = try identity.principal(id: id) { recipients[id] = principal }
+        if let principal = try identity.principal(id: id) {
+          recipients[id] = principal
+          pending[id] = try pendingCount(for: id)
+        }
       }
       try authorize(
         SendContext(
           sender: try identity.principal(id: message.sender), recipients: recipients,
-          rules: try rights.sendRules()))
+          rules: try rights.sendRules(), pendingCounts: pending))
       guard !message.recipients.isEmpty else { throw MessageError.noRecipients }
       try store.database.execute(
         """
@@ -47,6 +51,16 @@ public final class SQLiteMessageStore: MessageStore {
           [.integer(sequence), .text(recipient.rawValue)])
       }
     }
+  }
+
+  private func pendingCount(for recipient: PrincipalID) throws -> Int {
+    guard
+      case .integer(let count)? = try store.database.rows(
+        "SELECT COUNT(*) FROM deliveries WHERE recipient = ?1 AND state = 'pending'",
+        [.text(recipient.rawValue)]
+      ).first?.first, let size = Int(exactly: count)
+    else { throw StoreError.invalidStoredIdentity("pending count of \(recipient.rawValue)") }
+    return size
   }
 
   public func message(id: MessageID) throws -> StoredMessage? {

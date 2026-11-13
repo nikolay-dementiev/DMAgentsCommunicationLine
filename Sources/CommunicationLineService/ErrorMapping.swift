@@ -63,12 +63,17 @@ public enum ErrorMapping {
     case .messageUnavailable(let id): return (.messageUnavailable, "no message \(id.rawValue)")
     case .invalidSetting(let key): return (.invalidSetting, "the setting \(key) is not usable")
     case .invalidPageLimit(let limit): return (.invalidPageLimit, "page limit \(limit)")
+    case .recipientInboxFull(let id, let limit):
+      return (.recipientInboxFull, "\(id.rawValue) already has \(limit) pending messages")
+    case .tooManyWaiters: return (.tooManyWaiters, "too many waits are parked")
     }
   }
 
   private static func message(_ error: MessageError) -> (WireErrorCode, String) {
     switch error {
     case .noRecipients: return (.noRecipients, "a message needs a recipient")
+    case .tooManyRecipients(let limit, let actual):
+      return (.tooManyRecipients, "\(actual) recipients, the limit is \(limit)")
     case .subjectTooLarge(let limit, let actual):
       return (.subjectTooLarge, "subject is \(actual) bytes, the limit is \(limit)")
     case .bodyTooLarge(let limit, let actual):

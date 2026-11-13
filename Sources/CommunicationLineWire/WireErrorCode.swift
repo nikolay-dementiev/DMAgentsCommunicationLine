@@ -29,6 +29,9 @@ public enum WireErrorCode: String, Sendable, Codable, CaseIterable {
   case invalidPageLimit = "invalid_page_limit"
   case invalidSetting = "invalid_setting"
   case noRecipients = "no_recipients"
+  case tooManyRecipients = "too_many_recipients"
+  case recipientInboxFull = "recipient_inbox_full"
+  case tooManyWaiters = "too_many_waiters"
   case subjectTooLarge = "subject_too_large"
   case bodyTooLarge = "body_too_large"
   case expiryInThePast = "expiry_in_the_past"
@@ -40,13 +43,14 @@ public enum WireErrorCode: String, Sendable, Codable, CaseIterable {
 
   public var errorClass: WireErrorClass {
     switch self {
-    case .badRequest, .frameTooLarge: return .request
+    case .badRequest, .frameTooLarge, .recipientInboxFull, .tooManyWaiters: return .request
     case .tokenRequired, .unknownToken, .tokenRevoked, .principalDisabled: return .authentication
     case .ownerRequired, .agentRequired, .recipientRefused: return .permission
     case .unknownPrincipal, .unknownRecipient, .messageUnavailable, .unknownGrant, .unknownKey:
       return .notFound
     case .invalidName, .invalidRule, .invalidPageLimit, .invalidSetting, .noRecipients,
-      .subjectTooLarge, .bodyTooLarge, .expiryInThePast, .scopeNotAllowed, .subjectRequired,
+      .tooManyRecipients, .subjectTooLarge, .bodyTooLarge, .expiryInThePast, .scopeNotAllowed,
+      .subjectRequired,
       .subjectNotAllowed, .invalidValue:
       return .invalidInput
     case .internal: return .internal

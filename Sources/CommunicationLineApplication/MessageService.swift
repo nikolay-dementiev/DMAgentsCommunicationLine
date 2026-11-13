@@ -38,7 +38,9 @@ public struct MessageService {
     let distinct = Self.distinct(recipients)
     let limits = MessageLimits(
       maxSubjectBytes: try setting("messaging.subject_max", token: token),
-      maxBodyBytes: try setting("messaging.body_max", token: token))
+      maxBodyBytes: try setting("messaging.body_max", token: token),
+      maxRecipients: try setting("wire.recipients", token: token))
+    let inboxLimit = try setting("quota.messages.assigned_per_principal", token: token)
     try limits.validate(recipientCount: distinct.count, subject: subject, body: body)
 
     let message = OutgoingMessage(
@@ -53,6 +55,9 @@ public struct MessageService {
         }
         guard AccessPolicy.canSend(from: current, to: target, rules: context.rules) else {
           throw MessagingError.recipientRefused(id)
+        }
+        guard (context.pendingCounts[id] ?? 0) < inboxLimit else {
+          throw MessagingError.recipientInboxFull(id, limit: inboxLimit)
         }
       }
     }

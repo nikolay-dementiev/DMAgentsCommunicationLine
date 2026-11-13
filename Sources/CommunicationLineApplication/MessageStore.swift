@@ -13,6 +13,11 @@ public enum MessagingError: Error, Equatable {
   case invalidSetting(key: String)
   /// A store was asked for a page of fewer than one message.
   case invalidPageLimit(Int)
+  /// The recipient already has the most pending deliveries it may have. Nothing is deleted to make
+  /// room.
+  case recipientInboxFull(PrincipalID, limit: Int)
+  /// Every parked wait the service allows is in use.
+  case tooManyWaiters
 }
 
 /// A message ready to be stored. The sender is the authenticated caller, never a request field.
@@ -45,11 +50,17 @@ public struct SendContext: Sendable {
   /// Only the recipients that exist.
   public let recipients: [PrincipalID: Principal]
   public let rules: [SendRule]
+  /// How many pending deliveries each existing recipient already has.
+  public let pendingCounts: [PrincipalID: Int]
 
-  public init(sender: Principal?, recipients: [PrincipalID: Principal], rules: [SendRule]) {
+  public init(
+    sender: Principal?, recipients: [PrincipalID: Principal], rules: [SendRule],
+    pendingCounts: [PrincipalID: Int]
+  ) {
     self.sender = sender
     self.recipients = recipients
     self.rules = rules
+    self.pendingCounts = pendingCounts
   }
 }
 
