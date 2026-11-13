@@ -67,6 +67,10 @@ With `--json` a result is printed as the JSON document of the [response](service
 failure as `{"error":{"code":"...","message":"..."}}` on standard error. The exit status is the same in
 both modes.
 
+In text mode, text chosen by an agent (subject, names, body) is printed with control characters, bidirectional
+controls (U+202A to U+202E, U+2066 to U+2069) and the line and paragraph separators (U+2028, U+2029) written as
+`\u{...}` escapes; a body keeps its line breaks and tabs. `--json` prints the text exactly.
+
 ## Health report
 
 `commline health` prints, in this order: `started:` (milliseconds since 1970), `storage:` (bytes used of the budget
