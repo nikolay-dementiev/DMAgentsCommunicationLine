@@ -53,6 +53,54 @@ struct HostCommandTests {
     }
   }
 
+  // MARK: - uninstall
+
+  @Test func test_uninstall_runsTheUninstallerAndPrintsWhatItReports() {
+    let harness = CLIHarness(host: FakeHost(result: .success(["uninstalled", "store kept: /s"])))
+
+    let status = harness.run(["uninstall"])
+
+    #expect(status == 0, "a finished uninstall exits 0")
+    #expect(
+      harness.host.uninstalls == [FakeHost.UninstallCall(home: nil, deleteData: false)],
+      "the caller's own home, and the data is kept")
+    #expect(harness.standardOutput == "uninstalled\nstore kept: /s\n", "the report, line by line")
+    #expect(harness.connectedSockets.isEmpty, "uninstall does not ask the service for anything")
+  }
+
+  @Test func test_uninstall_passesTheHomeAndTheDeleteDataFlag() {
+    let harness = CLIHarness()
+
+    _ = harness.run(["uninstall", "--home", "/tmp/elsewhere", "--delete-data"])
+
+    #expect(
+      harness.host.uninstalls == [FakeHost.UninstallCall(home: "/tmp/elsewhere", deleteData: true)],
+      "the home folder as given, and the explicit request to delete the data")
+  }
+
+  @Test func test_aRefusedUninstall_exitsNonZeroAndSaysWhy() {
+    let harness = CLIHarness(host: FakeHost(result: .failure(Refused())))
+
+    let status = harness.run(["uninstall", "--delete-data"])
+
+    #expect(status == CommandExitStatus.failure.rawValue, "a refusal is a failure")
+    #expect(harness.standardOutput.isEmpty, "nothing is printed as a result")
+    #expect(harness.standardError.contains("refused for a reason"), "the reason is on stderr")
+  }
+
+  @Test func test_uninstall_takesNoPositionalsAndNoTokenOptions() {
+    for arguments in [
+      ["uninstall", "extra"], ["uninstall", "--token-file", "/x"], ["uninstall", "--store", "/s"],
+    ] {
+      let harness = CLIHarness()
+
+      let status = harness.run(arguments)
+
+      #expect(status == CommandExitStatus.usage.rawValue, "\(arguments) is a usage error")
+      #expect(harness.host.uninstalls.isEmpty, "\(arguments) uninstalled nothing")
+    }
+  }
+
   // MARK: - agent add
 
   private func addAgent(

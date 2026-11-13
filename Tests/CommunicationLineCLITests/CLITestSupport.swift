@@ -38,6 +38,17 @@ final class FakeHost: HostCommands, @unchecked Sendable {
   }
   private(set) var agents: [AgentCall] = []
 
+  struct UninstallCall: Equatable {
+    let home: String?
+    let deleteData: Bool
+  }
+  private(set) var uninstalls: [UninstallCall] = []
+
+  func uninstall(home: String?, deleteData: Bool) throws -> [String] {
+    lock.withLock { uninstalls.append(UninstallCall(home: home, deleteData: deleteData)) }
+    return try result.get()
+  }
+
   func install(home: String?) throws -> [String] {
     lock.withLock { installs.append(home) }
     return try result.get()
