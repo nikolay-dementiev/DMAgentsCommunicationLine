@@ -148,6 +148,8 @@ Each code belongs to one class; the CLI maps the class to its exit status.
 - `SO_RCVTIMEO` restarts on every received byte, so a client that sends one byte just inside the
   request timeout can hold a connection thread; there is no overall request deadline or connection
   cap yet (planned with the quotas).
+- `stop()` is bounded by the grace periods only while no request is stuck in the store; a request
+  blocked on an external writer can delay the close by up to the busy timeout.
 - Any process of the same user that connects first after a fresh install can claim the owner
   credential with `owner.credential`; the installer should call it right after the first start.
 - The service reads `store.busy_timeout` and `service.frame_max` once, at start.

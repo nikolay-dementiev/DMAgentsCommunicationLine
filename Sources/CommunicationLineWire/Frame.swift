@@ -1,7 +1,7 @@
 import Foundation
 
-/// A stream the frame reader takes bytes from. `read` returns fewer bytes than asked only at the
-/// end of the stream, where it returns an empty value.
+/// A stream the frame reader takes bytes from. `read` returns at most `count` bytes, possibly fewer;
+/// an empty value means the end of the stream.
 public protocol ByteSource {
   func read(upTo count: Int) throws -> Data
 }

@@ -69,6 +69,8 @@ public final class ServiceHost: @unchecked Sendable {
   public func stop() {
     state.lock()
     guard !isStopped else {
+      // A second caller also returns only once the first stop has finished.
+      while !isFinished { state.wait() }
       state.unlock()
       return
     }
