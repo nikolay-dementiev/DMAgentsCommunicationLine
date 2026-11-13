@@ -53,6 +53,14 @@ public struct SettingsService {
       principal: stored.principal, family: stored.family, global: stored.global)
   }
 
+  /// The global value of a setting, for the service's own work (cleanup, limits) where no caller's
+  /// token exists. It never looks at family or principal rows.
+  public func serviceValue(of key: String) throws -> SettingValue {
+    let definition = try definition(for: key)
+    let stored = try store.storedValues(key: key, family: nil, principal: nil)
+    return definition.effectiveValue(principal: nil, family: nil, global: stored.global)
+  }
+
   /// Validates a change against the catalog and applies it with an audit record. Only the owner's
   /// token is accepted; the owner is the audited actor.
   public func change(
