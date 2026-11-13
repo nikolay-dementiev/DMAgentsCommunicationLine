@@ -52,6 +52,12 @@ import Testing
       catalog.definition(for: "service.frame_max")?.range
         == SettingRange(minimum: 4096, maximum: 16_777_216), "frame limit is 4096..16777216")
     #expect(
+      catalog.definition(for: "wire.recipients")?.defaultValue == .integer(32),
+      "recipients per message default to 32")
+    #expect(
+      catalog.definition(for: "quota.messages.assigned_per_principal")?.defaultValue
+        == .integer(100_000), "pending deliveries per recipient default to 100000")
+    #expect(
       catalog.definition(for: "retention.activity.live")?.range
         == SettingRange(minimum: 1, maximum: 3650), "activity retention is 1..3650 days")
     #expect(

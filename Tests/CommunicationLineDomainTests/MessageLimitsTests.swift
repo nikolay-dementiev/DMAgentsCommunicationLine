@@ -2,12 +2,20 @@ import CommunicationLineDomain
 import Testing
 
 @Suite struct MessageLimitsTests {
-  private let limits = MessageLimits(maxSubjectBytes: 8, maxBodyBytes: 16)
+  private let limits = MessageLimits(maxSubjectBytes: 8, maxBodyBytes: 16, maxRecipients: 2)
 
   @Test func test_validate_exactlyAtTheLimits_accepts() throws {
     try limits.validate(
       recipientCount: 1, subject: String(repeating: "s", count: 8),
       body: String(repeating: "b", count: 16))
+  }
+
+  @Test func test_validate_recipientsOverTheLimit_areRefused() throws {
+    try limits.validate(recipientCount: 2, subject: "s", body: "b")
+
+    #expect(throws: MessageError.tooManyRecipients(limit: 2, actual: 3)) {
+      try limits.validate(recipientCount: 3, subject: "s", body: "b")
+    }
   }
 
   @Test func test_validate_bodyOverTheLimit_isRefused() {

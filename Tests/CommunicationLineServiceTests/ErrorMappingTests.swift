@@ -47,3 +47,20 @@ struct ErrorMappingTests {
     #expect(reporter.operations.isEmpty, "a known error is the caller's business, not a fault")
   }
 }
+
+struct LimitErrorMappingTests {
+  @Test func test_theLimitErrors_haveTheirOwnCodes() {
+    let reporter = RecordingReporter()
+    let cases: [(any Error, WireErrorCode)] = [
+      (MessageError.tooManyRecipients(limit: 2, actual: 3), .tooManyRecipients),
+      (MessagingError.recipientInboxFull(PrincipalID("p1"), limit: 5), .recipientInboxFull),
+      (MessagingError.tooManyWaiters, .tooManyWaiters),
+    ]
+    for (error, expected) in cases {
+      let response = ErrorMapping.response(for: error, operation: "send", reporter: reporter)
+
+      #expect(response.failure?.code == expected, "\(error) is \(expected.rawValue)")
+    }
+    #expect(reporter.operations.isEmpty, "a limit is the caller's business, not a fault")
+  }
+}
