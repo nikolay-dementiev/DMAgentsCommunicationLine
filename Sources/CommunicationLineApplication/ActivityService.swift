@@ -45,7 +45,8 @@ public struct ActivityService {
       case .owner: return .owner
       case .principal(let principal): return .principal(principal.id)
       }
-    } catch IdentityError.unknownToken, IdentityError.tokenRevoked, IdentityError.principalDisabled {
+    } catch IdentityError.unknownToken, IdentityError.tokenRevoked, IdentityError.principalDisabled
+    {
       return .unauthenticated
     }
   }
