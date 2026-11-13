@@ -182,4 +182,32 @@ struct CommandOutcomeTests {
     #expect(outcome.harness.standardOutput == "the-new-token\n", "just the token, for a pipe")
     #expect(outcome.harness.standardError.isEmpty, "nothing else")
   }
+
+  @Test func test_activity_printsOneLinePerRecordAndTheCursor() {
+    let outcome = run(["activity"]) { _ in
+      .success(
+        .object([
+          "records": .array([
+            .object([
+              "id": .integer(7), "at_ms": .integer(1_800_000_000_000),
+              "actor": .string("principal:p1"), "operation": .string("send"),
+              "outcome": .string("ok"), "targets": .array([.string("m1"), .string("p2")]),
+            ]),
+            .object([
+              "id": .integer(8), "at_ms": .integer(1_800_000_000_500),
+              "actor": .string("unauthenticated"), "operation": .string("inbox"),
+              "outcome": .string("unknown_token"), "targets": .array([]),
+            ]),
+          ]),
+          "next": .integer(8),
+        ]))
+    }
+
+    #expect(outcome.status == 0, "the page is shown")
+    #expect(
+      outcome.harness.standardOutput
+        == "7\t1800000000000\tprincipal:p1\tsend\tok\tm1,p2\n"
+        + "8\t1800000000500\tunauthenticated\tinbox\tunknown_token\t\nnext: 8\n",
+      "one tab-separated line per record, then the cursor")
+  }
 }

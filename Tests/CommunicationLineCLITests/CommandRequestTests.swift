@@ -143,4 +143,14 @@ struct CommandRequestTests {
     #expect(byStore.connectedSockets == ["/tmp/cl-store/commline.sock"], "the store's socket")
     #expect(bySocket.connectedSockets == ["/tmp/elsewhere.sock"], "the given socket")
   }
+
+  @Test func test_activity_asksForOnePageOfTheLog() throws {
+    let all = try sent(["activity"])
+    let page = try sent(["activity", "--after", "40", "--limit", "10"])
+
+    #expect(all.operation == "activity.list", "the operation")
+    #expect(all.arguments.isEmpty, "without options the service picks the page")
+    #expect(
+      page.arguments == ["after": .integer(40), "limit": .integer(10)], "cursor and page size")
+  }
 }
