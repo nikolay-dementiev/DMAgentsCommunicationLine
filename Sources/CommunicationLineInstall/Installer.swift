@@ -14,6 +14,27 @@ public enum InstallError: Error, Equatable {
   case filesystem(String)
 }
 
+extension InstallError: CustomStringConvertible {
+  public var description: String {
+    switch self {
+    case .refusedAsRoot:
+      return "install runs under your own account; it does not run as root"
+    case .missingExecutable(let name):
+      return "\(name) was not found next to commline"
+    case .serviceNotReady(let reason):
+      return "the service did not start: \(reason)"
+    case .ownerCredentialUnavailable:
+      return
+        "the service already has an owner credential but the owner token file is missing; "
+        + "the credential was not replaced"
+    case .ownerTokenNotWritten(let reason):
+      return "the owner token could not be written: \(reason)"
+    case .launchd(let reason): return "launchd refused the request: \(reason)"
+    case .filesystem(let reason): return "a file could not be written: \(reason)"
+    }
+  }
+}
+
 public struct InstallReport: Equatable, Sendable, CustomStringConvertible {
   public let upgraded: Bool
   public let ownerTokenIssued: Bool
