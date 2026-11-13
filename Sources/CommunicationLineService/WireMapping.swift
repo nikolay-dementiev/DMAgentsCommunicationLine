@@ -80,4 +80,18 @@ enum WireMapping {
     default: throw RequestError.badRequest("argument value must be an integer, bool or string")
     }
   }
+
+  static func activity(_ record: ActivityRecord) -> WireValue {
+    let actor: String
+    switch record.actor {
+    case .owner: actor = "owner"
+    case .unauthenticated: actor = "unauthenticated"
+    case .principal(let id): actor = "principal:" + id.rawValue
+    }
+    return .object([
+      "id": .integer(record.id), "at_ms": milliseconds(record.at), "actor": .string(actor),
+      "operation": .string(record.operation), "outcome": .string(record.outcome),
+      "targets": .array(record.targets.map { .string($0) }),
+    ])
+  }
 }

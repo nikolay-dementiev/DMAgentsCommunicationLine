@@ -19,6 +19,7 @@ enum Operation: String {
   case ruleList = "rule.list"
   case settingGet = "setting.get"
   case settingSet = "setting.set"
+  case activityList = "activity.list"
 }
 
 /// Serves one request at a time against the services. It never throws: every failure is a typed
@@ -30,28 +31,67 @@ public struct RequestDispatcher: @unchecked Sendable {
   let rights: RightsService
   let settings: SettingsService
   let messages: MessageService
+  let activity: ActivityService
+  private let transactions: any TransactionRunner
   private let reporter: any FailureReporter
 
   init(
     identity: IdentityService, rights: RightsService, settings: SettingsService,
-    messages: MessageService, reporter: any FailureReporter
+    messages: MessageService, activity: ActivityService, transactions: any TransactionRunner,
+    reporter: any FailureReporter
   ) {
     self.identity = identity
     self.rights = rights
     self.settings = settings
     self.messages = messages
+    self.activity = activity
+    self.transactions = transactions
     self.reporter = reporter
   }
 
+  /// Every request leaves one activity record. For an ordinary request the record is written in
+  /// the transaction of its effect, so neither exists without the other; a refused or failed request
+  /// rolls back and is recorded afterwards. A `wait` parks, so it never holds a transaction: it is
+  /// recorded when it ends.
   public func handle(_ request: WireRequest) -> WireResponse {
+    let operation = Operation(rawValue: request.operation)
+    let name = operation?.rawValue ?? "unknown"
+    let arguments = Arguments(values: request.arguments)
     do {
-      guard let operation = Operation(rawValue: request.operation) else {
+      guard let operation else {
         throw RequestError.badRequest("unknown operation \(request.operation)")
       }
-      let arguments = Arguments(values: request.arguments)
-      return .success(try perform(operation, request: request, arguments: arguments))
+      let result: WireValue
+      if operation == .wait {
+        let actor = activity.actor(for: try? optionalToken(of: request))
+        result = try perform(operation, request: request, arguments: arguments)
+        try activity.record(actor: actor, operation: name, outcome: "ok", targets: [])
+      } else {
+        result = try transactions.atomically {
+          let actor = activity.actor(for: try? optionalToken(of: request))
+          let value = try perform(operation, request: request, arguments: arguments)
+          try activity.record(
+            actor: actor, operation: name, outcome: "ok",
+            targets: activityTargets(operation, arguments: arguments, result: value))
+          return value
+        }
+      }
+      return .success(result)
     } catch {
-      return ErrorMapping.response(for: error, operation: request.operation, reporter: reporter)
+      let response = ErrorMapping.response(
+        for: error, operation: request.operation, reporter: reporter)
+      recordFailure(of: request, as: name, response: response)
+      return response
+    }
+  }
+
+  private func recordFailure(of request: WireRequest, as name: String, response: WireResponse) {
+    do {
+      try activity.record(
+        actor: activity.actor(for: try? optionalToken(of: request)), operation: name,
+        outcome: response.failure?.code.rawValue ?? "internal", targets: [])
+    } catch {
+      reporter.report(error, operation: "record activity")
     }
   }
 
@@ -63,6 +103,8 @@ public struct RequestDispatcher: @unchecked Sendable {
       return try performAgent(operation, token: try token(of: request), arguments: arguments)
     case .ownerCredential:
       return try issueOwnerCredential(replacing: try optionalToken(of: request))
+    case .activityList:
+      return try performActivity(token: try token(of: request), arguments: arguments)
     default:
       return try performOwner(operation, token: try token(of: request), arguments: arguments)
     }

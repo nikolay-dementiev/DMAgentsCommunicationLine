@@ -59,8 +59,12 @@ public final class ServiceRuntime {
       authenticator: identity, settings: settings, identifiers: UUIDIdentifierSource(),
       clock: clock, arrival: arrival)
     let frameMaximum = try frameMaximum(catalog: catalog, store: settingsStore)
+    let activity = ActivityService(
+      store: SQLiteActivityStore(store: store), identity: identity, settings: settings,
+      clock: clock)
     let dispatcher = RequestDispatcher(
       identity: identity, rights: rights, settings: settings, messages: messages,
+      activity: activity, transactions: SQLiteTransactionRunner(store: store),
       reporter: reporter)
     return ServiceRuntime(
       dispatcher: dispatcher, frameMaximum: frameMaximum, store: store, arrival: arrival)
