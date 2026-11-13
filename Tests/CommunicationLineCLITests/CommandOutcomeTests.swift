@@ -160,6 +160,73 @@ struct CommandOutcomeTests {
     #expect(read.harness.standardOutput.hasSuffix("\nline one\nline two\n"), "the body follows")
   }
 
+  // MARK: - Control characters
+
+  private static let hostile = "ok\u{1B}[31mred\u{07}\r\tx\u{9B}y"
+
+  @Test func test_textOutput_escapesControlCharactersInAgentChosenText() {
+    let answers: [(arguments: [String], result: WireValue)] = [
+      (
+        ["inbox"],
+        .object([
+          "entries": .array([
+            .object([
+              "id": .string("m1"), "sender": .string("p\u{1B}1"), "created_at_ms": .integer(1),
+              "subject": .string(Self.hostile),
+            ])
+          ])
+        ])
+      ),
+      (
+        ["read", "m1"],
+        .object([
+          "sender": .string(Self.hostile), "recipients": .array([.string(Self.hostile)]),
+          "subject": .string(Self.hostile), "body": .string("line one\nline\ttwo \u{1B}[2J"),
+        ])
+      ),
+      (
+        ["principal", "create", "--family", "f", "--role", "agent", "--name", "n"],
+        .object([
+          "id": .string("p1"), "family": .string(Self.hostile), "role": .string("agent"),
+          "name": .string(Self.hostile),
+        ])
+      ),
+    ]
+    for answer in answers {
+      let outcome = run(answer.arguments) { _ in .success(answer.result) }
+
+      let output = outcome.harness.standardOutput
+      #expect(
+        !output.unicodeScalars.contains { $0.value == 0x1B || $0.value == 0x07 || $0.value == 0x9B },
+        "\(answer.arguments) prints no raw control byte: \(output.debugDescription)")
+      #expect(output.contains("\\u{1b}"), "\(answer.arguments) shows the escape instead")
+    }
+  }
+
+  @Test func test_aMessageBody_keepsItsLineBreaksAndTabs() {
+    let result = WireValue.object([
+      "sender": .string("p1"), "recipients": .array([.string("p2")]), "subject": .string("s"),
+      "body": .string("one\ntwo\tthree"),
+    ])
+
+    let outcome = run(["read", "m1"]) { _ in .success(result) }
+
+    #expect(
+      outcome.harness.standardOutput.hasSuffix("one\ntwo\tthree\n"),
+      "a readable body is not mangled")
+  }
+
+  @Test func test_jsonOutput_staysExact() throws {
+    let result = WireValue.object(["subject": .string(Self.hostile)])
+
+    let outcome = run(["--json", "inbox"]) { _ in .success(result) }
+
+    let decoded = try JSONSerialization.jsonObject(with: Data(outcome.harness.standardOutput.utf8))
+    #expect(
+      (decoded as? [String: String])?["subject"] == Self.hostile,
+      "the JSON carries the text as it is")
+  }
+
   @Test func test_json_whenTheAnswerCannotBeEncoded_failsVisiblyInsteadOfPrintingNull() {
     struct Unencodable: Error {}
     let harness = CLIHarness(encode: { _ in throw Unencodable() })
