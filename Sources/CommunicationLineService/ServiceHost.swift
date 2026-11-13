@@ -14,7 +14,7 @@ public enum ServiceHostError: Error, Equatable {
 /// One service instance: the only opener of the store, listening on a Unix-domain socket inside the
 /// private store folder. Each connection carries one request and one response.
 public final class ServiceHost: @unchecked Sendable {
-  public static let socketName = "commline.sock"
+  public static let socketName = ServiceFiles.socketName
   public static let lockName = "commline.lock"
 
   public let socketPath: String
