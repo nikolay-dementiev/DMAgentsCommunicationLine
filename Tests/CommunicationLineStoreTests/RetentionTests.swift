@@ -117,8 +117,36 @@ import Testing
 
     let result = try fixture.cleanup.run()
 
-    #expect(result == CleanupResult(deliveries: 1, messages: 0, activity: 0), "only the done part")
+    #expect(
+      result == CleanupResult(deliveries: 0, messages: 0, activity: 0),
+      "a delivery stays while another delivery of its message is pending")
+    #expect(try world.count("deliveries") == 2, "both deliveries are still stored")
     #expect(try world.count("messages") == 1, "the message still has a pending delivery")
+  }
+
+  @Test func test_aMessageGoesOnlyWhenEveryDeliveryIsAcknowledgedAndTheNewestAckIsOldEnough()
+    throws
+  {
+    let fixture = try Fixture()
+    let world = fixture.world
+    let id = try world.messages.send(
+      token: world.alphaToken, to: [world.alphaPeer.id, world.alphaHead.id], subject: "s",
+      body: "b")
+    try world.messages.acknowledge(token: world.alphaPeerToken, messageID: id)
+    fixture.advance(days: 60)
+    try world.messages.acknowledge(token: world.alphaHeadToken, messageID: id)
+    fixture.advance(days: 40)
+
+    let early = try fixture.cleanup.run()
+    fixture.advance(days: 51)
+    let late = try fixture.cleanup.run()
+
+    #expect(
+      early == CleanupResult(deliveries: 0, messages: 0, activity: 0),
+      "the first ack is 100 days old but the newest is 40: the whole message waits")
+    #expect(
+      late == CleanupResult(deliveries: 2, messages: 1, activity: 0),
+      "once the newest ack is past the window both deliveries and the message go")
   }
 
   @Test func test_theRetentionWindow_followsTheCatalog() throws {
