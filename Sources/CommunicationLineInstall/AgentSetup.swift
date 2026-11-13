@@ -85,11 +85,24 @@ public struct AgentSetup {
     let token = try text("token", in: issued)
     do {
       return try writeFiles(request: request, id: id, token: token, commandFile: commandFile)
-    } catch let error as AgentSetupError {
-      throw error
     } catch {
-      throw AgentSetupError.filesystem("\(error)")
+      throw failedAfterCreating(id, service: service, ownerToken: ownerToken, cause: error)
     }
+  }
+
+  /// The principal exists but its files do not all exist, so it is switched off and the error says
+  /// what was left behind.
+  private func failedAfterCreating(
+    _ id: String, service: any ServiceConnection, ownerToken: String, cause: any Error
+  ) -> AgentSetupError {
+    let outcome: String
+    do {
+      _ = try call(service, "principal.disable", token: ownerToken, ["principal": .string(id)])
+      outcome = "principal \(id) was created and then disabled"
+    } catch {
+      outcome = "principal \(id) was created and is still enabled (disabling it failed: \(error))"
+    }
+    return .filesystem("\(cause); \(outcome)")
   }
 
   // MARK: - Steps
@@ -103,7 +116,9 @@ public struct AgentSetup {
     }
     let file = layout.claudeCommandsFolder.appendingPathComponent(
       "commline-\(Self.fileSafe(request.name)).md")
-    guard !FileManager.default.fileExists(atPath: file.path) else {
+    // `lstat` also sees a link that points nowhere, which `fileExists` follows and misses.
+    var status = stat()
+    guard lstat(file.path, &status) != 0 else {
       throw AgentSetupError.commandFileExists(file.path)
     }
     return file
@@ -138,13 +153,14 @@ public struct AgentSetup {
   private func writeCommand(_ file: URL, request: AgentRequest, id: String, invocation: String)
     throws
   {
+    // Listed first: a listed file that was never written is harmless, an unlisted one is not.
+    var manifest = try Manifest.read(from: layout.manifestURL)
+    manifest.files.append(file.path)
+    try manifest.write(to: layout.manifestURL)
     try HostFiles.createExclusively(
       Data(
         AgentInstructions.claudeCodeCommand(request: request, id: id, invocation: invocation).utf8),
       at: file, mode: 0o600)
-    var manifest = try Manifest.read(from: layout.manifestURL)
-    manifest.files.append(file.path)
-    try manifest.write(to: layout.manifestURL)
   }
 
   private func call(
