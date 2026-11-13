@@ -208,6 +208,30 @@ struct InstallerTests {
     #expect(manifest.storeFolder == world.layout.storeFolder.path, "where the data is")
   }
 
+  @Test func test_install_carriesTheResourceBundlesTheServiceReadsAtStart() throws {
+    let world = try World()
+    let bundle = world.executables.url.appendingPathComponent(
+      "CommunicationLine_CommunicationLineStore.bundle", isDirectory: true)
+    let resource = bundle.appendingPathComponent("Contents/Resources/settings-defaults.json")
+    try FileManager.default.createDirectory(
+      at: resource.deletingLastPathComponent(), withIntermediateDirectories: true)
+    FileManager.default.createFile(atPath: resource.path, contents: Data("{}".utf8))
+    FileManager.default.createFile(
+      atPath: world.executables.url.appendingPathComponent("unrelated.bundle").path,
+      contents: Data("x".utf8))
+
+    _ = try world.installer.install()
+
+    let installed = world.layout.binFolder.appendingPathComponent(bundle.lastPathComponent)
+    #expect(
+      try String(
+        contentsOf: installed.appendingPathComponent("Contents/Resources/settings-defaults.json"),
+        encoding: .utf8) == "{}", "the bundle sits next to the installed programs")
+    #expect(
+      try Manifest.read(from: world.layout.manifestURL).folders == [installed.path],
+      "the manifest lists the bundle folder, and only ours")
+  }
+
   @Test func test_everyInstallError_saysWhatToDo() {
     let described: [(InstallError, String)] = [
       (.refusedAsRoot, "root"),

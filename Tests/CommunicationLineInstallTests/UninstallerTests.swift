@@ -105,6 +105,22 @@ struct UninstallerTests {
     #expect(!world.exists(command), "a recorded command file is removed")
   }
 
+  @Test func test_uninstall_removesTheFoldersTheManifestNames_andNoOtherFolder() throws {
+    let world = try World()
+    let ours = world.layout.binFolder.appendingPathComponent("Ours.bundle", isDirectory: true)
+    let theirs = world.layout.binFolder.appendingPathComponent("Theirs.bundle", isDirectory: true)
+    try world.plant(ours.appendingPathComponent("Contents/data"))
+    try world.plant(theirs.appendingPathComponent("Contents/data"))
+    var manifest = try Manifest.read(from: world.layout.manifestURL)
+    manifest.folders = [ours.path]
+    try manifest.write(to: world.layout.manifestURL)
+
+    _ = try world.uninstaller().uninstall(deleteData: false)
+
+    #expect(!world.exists(ours), "the recorded folder is removed with its contents")
+    #expect(world.exists(theirs), "a folder that is not recorded stays")
+  }
+
   @Test func test_deleteData_withPendingMail_refusesAndChangesNothing() throws {
     let world = try World(pending: [3])
     let callsBefore = world.launchd.calls
