@@ -197,6 +197,7 @@ acknowledged delivery is never overdue.
 ## Known limits
 
 - A parked `wait` authenticates when it starts; a token revoked meanwhile ends it only at its timeout.
+- While a `wait` is parked the service watches the connection. When the client disconnects (end of stream or hang-up) the wait ends at once and gives back its thread, its connection place and its waiter slot; the answer is dropped and the wait is still recorded in the activity log. A client therefore must not close its sending side after the request: it sends one request and only reads until the answer.
 - The service answers nothing to a connection it refuses for being over `limits.connections`; the client sees
   the connection closed.
 - Health scans every pending delivery older than the moment of the call to find the overdue ones, because the

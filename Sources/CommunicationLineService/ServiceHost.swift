@@ -1,3 +1,4 @@
+import CommunicationLineApplication
 import CommunicationLineDomain
 import CommunicationLineStore
 import CommunicationLineWire
@@ -255,7 +256,8 @@ public final class ServiceHost: @unchecked Sendable {
       let payload = try codec.readFrame(from: stream)
       requestFinished(descriptor)
       guard let payload else { return }
-      response = answer(payload)
+      guard let answered = answer(payload, over: descriptor) else { return }
+      response = answered
     } catch let error as FrameError {
       response = failure(for: error)
     } catch UnixSocketError.system(_, let code) where code == EAGAIN || code == ECONNRESET {
@@ -309,11 +311,32 @@ public final class ServiceHost: @unchecked Sendable {
     }
   }
 
-  private func answer(_ payload: Data) -> WireResponse {
+  /// The response to `payload`, or nil when the client left while the request was being answered
+  /// and nobody is there to read it.
+  private func answer(_ payload: Data, over descriptor: Int32) -> WireResponse? {
+    let request: WireRequest
     do {
-      return runtime.dispatcher.handle(try WireCoding.decodeRequest(payload))
+      request = try WireCoding.decodeRequest(payload)
     } catch {
       return .failure(code: .badRequest, message: "the frame is not a request")
+    }
+    guard request.operation == "wait" else { return runtime.dispatcher.handle(request) }
+    let cancellation = WaitCancellation()
+    let watcher = watchForDisconnect(of: descriptor, cancelling: cancellation)
+    defer { watcher?.stop() }
+    let response = runtime.dispatcher.handle(request, cancellation: cancellation)
+    return cancellation.isCancelled ? nil : response
+  }
+
+  private func watchForDisconnect(of descriptor: Int32, cancelling cancellation: WaitCancellation)
+    -> DisconnectWatcher?
+  {
+    do {
+      return try DisconnectWatcher(descriptor: descriptor) { cancellation.cancel() }
+    } catch {
+      // The wait still works; it just cannot notice a client that leaves before its time is up.
+      reporter.report(error, operation: "watch connection")
+      return nil
     }
   }
 

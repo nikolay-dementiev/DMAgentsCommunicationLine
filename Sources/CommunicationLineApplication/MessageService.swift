@@ -105,9 +105,15 @@ public struct MessageService {
 
   /// Returns at once when the caller has pending mail; otherwise parks until mail for the caller is
   /// committed or `timeout` runs out. The timeout defaults to `messaging.wait` and never exceeds it;
-  /// a catalog value of zero turns parking off. Nothing polls: the wait ends on a signal.
-  public func wait(token: CredentialToken, timeout: TimeInterval? = nil) throws -> WaitResult {
+  /// a catalog value of zero turns parking off. Nothing polls: the wait ends on a signal. A
+  /// cancelled wait returns as timed out and gives its place back.
+  public func wait(
+    token: CredentialToken, timeout: TimeInterval? = nil, cancellation: WaitCancellation? = nil
+  ) throws -> WaitResult {
     let recipient = try requirePrincipal(token)
+    // A cancelled wait is woken like a wait that mail arrived for: it looks again and leaves.
+    let arrival = self.arrival
+    cancellation?.onCancel { arrival.signal(recipients: [recipient.id]) }
     let limit = TimeInterval(try setting("messaging.wait", token: token, allowingZero: true))
     let allowed = min(timeout ?? limit, limit)
     let deadline = clock.now().addingTimeInterval(allowed)
@@ -116,6 +122,7 @@ public struct MessageService {
     while true {
       let ticket = arrival.ticket(for: recipient.id)
       if try store.hasPending(for: recipient.id) { return .mail }
+      if cancellation?.isCancelled == true { return .timedOut }
       let remaining = deadline.timeIntervalSince(clock.now())
       guard allowed > 0, remaining > 0 else { return .timedOut }
       if !holdsPlace {

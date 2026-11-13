@@ -4,9 +4,10 @@ import CommunicationLineWire
 import Foundation
 
 extension RequestDispatcher {
-  func performAgent(_ operation: Operation, token: CredentialToken, arguments: Arguments) throws
-    -> WireValue
-  {
+  func performAgent(
+    _ operation: Operation, token: CredentialToken, arguments: Arguments,
+    cancellation: WaitCancellation? = nil
+  ) throws -> WireValue {
     switch operation {
     case .send:
       let recipients = try arguments.strings("to").map { PrincipalID($0) }
@@ -26,7 +27,8 @@ extension RequestDispatcher {
     case .wait:
       let seconds = try arguments.optionalInteger("timeout")
       if let seconds, seconds < 0 { throw RequestError.badRequest("timeout must not be negative") }
-      let result = try messages.wait(token: token, timeout: seconds.map { TimeInterval($0) })
+      let result = try messages.wait(
+        token: token, timeout: seconds.map { TimeInterval($0) }, cancellation: cancellation)
       return .object(["outcome": .string(result == .mail ? "mail" : "timeout")])
     default:
       throw RequestError.badRequest("not an agent operation")

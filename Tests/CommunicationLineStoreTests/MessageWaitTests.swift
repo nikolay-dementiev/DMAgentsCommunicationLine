@@ -11,10 +11,15 @@ private final class BackgroundWait: @unchecked Sendable {
   private let lock = NSLock()
   private var outcome: Result<WaitResult, Error>?
 
-  init(_ messages: MessageService, token: CredentialToken, timeout: TimeInterval) {
+  init(
+    _ messages: MessageService, token: CredentialToken, timeout: TimeInterval,
+    cancellation: WaitCancellation? = nil
+  ) {
     nonisolated(unsafe) let messages = messages
     Thread.detachNewThread { [self] in
-      let result = Result { try messages.wait(token: token, timeout: timeout) }
+      let result = Result {
+        try messages.wait(token: token, timeout: timeout, cancellation: cancellation)
+      }
       lock.withLock { outcome = result }
       finished.signal()
     }
@@ -54,6 +59,35 @@ private final class BackgroundWait: @unchecked Sendable {
 
     #expect(result == .timedOut, "nothing arrived")
     #expect(arrival.parkedWaiterCount == 0, "the waiter is gone after the timeout")
+  }
+
+  @Test func test_wait_whenCancelled_endsAtOnceAndGivesItsPlaceBack() throws {
+    let arrival = InProcessMailArrival()
+    let fixture = try MessagingFixture(arrival: arrival)
+    let cancellation = WaitCancellation()
+    let waiter = BackgroundWait(
+      fixture.messages, token: fixture.alphaPeerToken, timeout: 30, cancellation: cancellation)
+    try waitUntilParked(arrival)
+    #expect(fixture.waitQuota.activeCount == 1, "the parked wait holds a place")
+
+    cancellation.cancel()
+
+    #expect(try waiter.result(within: 5) == .timedOut, "the cancelled wait ended long before 30 s")
+    #expect(arrival.parkedWaiterCount == 0, "it is no longer parked")
+    #expect(fixture.waitQuota.activeCount == 0, "its place in the quota is free again")
+  }
+
+  @Test func test_wait_cancelledBeforeItStarted_doesNotPark() throws {
+    let arrival = InProcessMailArrival()
+    let fixture = try MessagingFixture(arrival: arrival)
+    let cancellation = WaitCancellation()
+    cancellation.cancel()
+
+    let result = try fixture.messages.wait(
+      token: fixture.alphaPeerToken, timeout: 30, cancellation: cancellation)
+
+    #expect(result == .timedOut, "a cancellation that came first is honoured")
+    #expect(fixture.waitQuota.activeCount == 0, "no place was taken")
   }
 
   @Test func test_wait_wakesWhenMailIsSentToTheWaiter() throws {

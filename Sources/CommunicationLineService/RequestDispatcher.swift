@@ -59,7 +59,9 @@ public struct RequestDispatcher: @unchecked Sendable {
   /// the transaction of its effect, so neither exists without the other; a refused or failed request
   /// rolls back and is recorded afterwards. A `wait` parks, so it never holds a transaction: it is
   /// recorded when it ends.
-  public func handle(_ request: WireRequest) -> WireResponse {
+  public func handle(_ request: WireRequest, cancellation: WaitCancellation? = nil)
+    -> WireResponse
+  {
     let operation = Operation(rawValue: request.operation)
     let name = operation?.rawValue ?? "unknown"
     let arguments = Arguments(values: request.arguments)
@@ -72,7 +74,8 @@ public struct RequestDispatcher: @unchecked Sendable {
       if operation == .wait {
         let actor = try actor(of: request)
         result = try perform(
-          operation, request: request, arguments: arguments, afterCommit: afterCommit)
+          operation, request: request, arguments: arguments, afterCommit: afterCommit,
+          cancellation: cancellation)
         try activity.record(actor: actor, operation: name, outcome: "ok", targets: [])
       } else {
         result = try transactions.atomically {
@@ -116,11 +119,13 @@ public struct RequestDispatcher: @unchecked Sendable {
   }
 
   private func perform(
-    _ operation: Operation, request: WireRequest, arguments: Arguments, afterCommit: AfterCommit
+    _ operation: Operation, request: WireRequest, arguments: Arguments, afterCommit: AfterCommit,
+    cancellation: WaitCancellation? = nil
   ) throws -> WireValue {
     switch operation {
     case .send, .inbox, .read, .acknowledge, .wait:
-      return try performAgent(operation, token: try token(of: request), arguments: arguments)
+      return try performAgent(
+        operation, token: try token(of: request), arguments: arguments, cancellation: cancellation)
     case .ownerCredential:
       return try issueOwnerCredential(replacing: try optionalToken(of: request))
     case .activityList:
