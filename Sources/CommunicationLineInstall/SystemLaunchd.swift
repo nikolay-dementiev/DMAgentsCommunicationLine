@@ -44,8 +44,16 @@ public struct SystemLaunchd: LaunchdControl {
     self.runner = runner
   }
 
+  /// `launchctl print` exits 113 when the domain exists but holds no such service. Any other
+  /// failure, for example 112 for a user without a graphical session, says nothing about the
+  /// service, so it is an error and not an answer.
+  private static let serviceNotFound: Int32 = 113
+
   public func isLoaded(label: String, userID: UInt32) throws -> Bool {
-    try runner.run(Self.launchctl, ["print", "gui/\(userID)/\(label)"]).status == 0
+    let result = try runner.run(Self.launchctl, ["print", "gui/\(userID)/\(label)"])
+    if result.status == Self.serviceNotFound { return false }
+    try require(result, "print")
+    return true
   }
 
   public func bootstrap(plist: URL, userID: UInt32) throws {
