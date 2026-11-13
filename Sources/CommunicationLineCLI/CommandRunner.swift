@@ -269,7 +269,9 @@ public struct CommandRunner {
     }
     let result = response.result ?? .object([:])
     if let reservation {
-      return store(result, in: reservation, asJSON: asJSON)
+      return store(
+        result, in: reservation, asJSON: asJSON,
+        isOwnerCredential: command.operation == "owner.credential")
     }
     if asJSON {
       do {
@@ -289,7 +291,10 @@ public struct CommandRunner {
     return CommandExitStatus.success.rawValue
   }
 
-  private func store(_ result: WireValue, in reservation: TokenReservation, asJSON: Bool)
+  private func store(
+    _ result: WireValue, in reservation: TokenReservation, asJSON: Bool,
+    isOwnerCredential: Bool
+  )
     -> Int32
   {
     guard case .object(let fields) = result, case .string(let token)? = fields["token"],
@@ -303,7 +308,8 @@ public struct CommandRunner {
     } catch {
       standardError(
         "commline: the credential was issued but the token could not be saved: \(error); "
-          + "issue a new one")
+          + (isOwnerCredential
+            ? "run commline owner recover to get a new owner token" : "issue a new one"))
       return CommandExitStatus.failure.rawValue
     }
     if asJSON {

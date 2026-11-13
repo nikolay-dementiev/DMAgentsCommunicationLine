@@ -19,6 +19,7 @@ final class DisconnectWatcher: @unchecked Sendable {
   init(descriptor: Int32, onDisconnect: @escaping @Sendable () -> Void) throws {
     var ends: [Int32] = [0, 0]
     guard pipe(&ends) == 0 else { throw Failure.pipe(code: errno) }
+    for end in ends { _ = fcntl(end, F_SETFD, FD_CLOEXEC) }
     self.descriptor = descriptor
     self.onDisconnect = onDisconnect
     wakeRead = ends[0]

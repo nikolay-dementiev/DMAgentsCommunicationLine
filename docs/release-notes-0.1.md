@@ -60,6 +60,12 @@ Planned for 0.2 or later:
 - a failed upgrade can leave the old service stopped; run `commline install` again;
 - a database that already holds a row with id -1 in `activity` or `settings_audit` is not repaired by the version 6
   migration (versions 4 and 5 were never released, so only a development database can be affected);
+- a `--token-out` file is removed by name, and a command killed by a signal between the request and the write leaves
+  an empty 0600 file (remove it and, for the owner, run `commline owner recover`);
+- each parked wait holds three descriptors and two threads; keep `limits.connections` well below the descriptor limit
+  of the service (often 256 under launchd);
+- `uninstall --delete-data` takes no lock when the store folder is missing at that moment;
+- the client deadline covers reads and connects, not a write larger than the socket buffer to a peer that never reads;
 - files are renamed into place without `fsync`, so a power loss right after an install can leave an empty file;
   run `commline install` again;
 - `launchctl print` failures other than "not found" (for example no graphical session) now stop install and uninstall with an error.
