@@ -160,8 +160,9 @@ operation name is never recorded. The log is append-only; only retention deletes
 ## Retention and cleanup
 
 Cleanup runs every `cleanup.interval` seconds and when the owner sends `health.cleanup`. In one transaction it
-deletes acknowledged deliveries acknowledged more than `retention.messages.live` days ago, then the messages that
-have no delivery left, then activity older than `retention.activity.live` days. Pending mail is never deleted: a
+deletes the deliveries of each message whose deliveries are all acknowledged and whose newest acknowledgement is
+more than `retention.messages.live` days old (a message with a pending delivery keeps all of them), then the
+messages that have no delivery left, then activity older than `retention.activity.live` days. Pending mail is never deleted: a
 trigger in the database refuses it, independently of this code. A failed scheduled run is reported on standard error
 and tried again at the next interval. The service remembers the last run (time and counts, or that it failed) for the
 health report; the memory lasts as long as the process.

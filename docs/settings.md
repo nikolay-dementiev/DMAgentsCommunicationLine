@@ -78,4 +78,4 @@ Where the design has a row, the v0.1 key uses its name and default:
 whole request, counted from the accept; the per-read timeout alone cannot stop a client that sends one byte at a time.
 `cleanup.interval`, `limits.connections` and `service.request_deadline` are read once, at start. A zero in the design
 means "disabled"; the v0.1 ranges for these three start at 1.
-The retention keys count whole days from the time of acknowledgement (mail) or of the request (activity).
+The retention keys count whole days from the time of the newest acknowledgement of a message (mail: a message with several recipients is judged when all of them have acknowledged) or of the request (activity).

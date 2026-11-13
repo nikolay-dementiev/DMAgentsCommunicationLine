@@ -16,7 +16,8 @@ public struct CleanupResult: Equatable, Sendable {
 
 /// The deletions retention needs. Pending mail is never among them.
 public protocol RetentionStore {
-  /// Deletes acknowledged deliveries acknowledged before `cutoff`.
+  /// Deletes the deliveries of every message whose deliveries are all acknowledged, the newest
+  /// of them before `cutoff`. A message with a pending delivery keeps all of its deliveries.
   func deleteAcknowledgedDeliveries(before cutoff: Date) throws -> Int
   /// Deletes messages that have no delivery left.
   func deleteMessagesWithoutDeliveries() throws -> Int

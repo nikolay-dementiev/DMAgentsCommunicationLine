@@ -11,8 +11,14 @@ public final class SQLiteRetentionStore: RetentionStore {
   }
 
   public func deleteAcknowledgedDeliveries(before cutoff: Date) throws -> Int {
+    // A message is judged as a whole: its deliveries go together, and only when none is pending
+    // and the newest acknowledgement is older than the cutoff.
     try deleted(
-      "DELETE FROM deliveries WHERE state = 'acknowledged' AND acknowledged_at_ms < ?1",
+      """
+      DELETE FROM deliveries WHERE message_seq IN (
+        SELECT message_seq FROM deliveries GROUP BY message_seq
+        HAVING SUM(state <> 'acknowledged') = 0 AND MAX(acknowledged_at_ms) < ?1)
+      """,
       [.integer(try StoreTime.milliseconds(of: cutoff))])
   }
 
