@@ -135,4 +135,20 @@ struct WireMessageTests {
     let allowed = try WireCoding.decodeRequest(request(depth: 8))
     #expect(allowed.operation == "x", "a few levels of nesting are ordinary")
   }
+
+  @Test func test_nestingAtExactlyTheLimit_isAccepted_andOneLevelMoreIsRefused() throws {
+    // The request object is level 1 and its arguments object is level 2; the arrays add the rest.
+    func request(totalDepth: Int) -> Data {
+      let arrays = totalDepth - 2
+      let nested = String(repeating: "[", count: arrays) + String(repeating: "]", count: arrays)
+      return Data("{\"op\":\"x\",\"args\":{\"a\":\(nested)}}".utf8)
+    }
+    let limit = WireCoding.maximumDepth
+
+    let atLimit = try WireCoding.decodeRequest(request(totalDepth: limit))
+    #expect(atLimit.operation == "x", "a request nested exactly \(limit) levels deep is accepted")
+    #expect(throws: WireError.malformed, "one level past the limit is refused") {
+      _ = try WireCoding.decodeRequest(request(totalDepth: limit + 1))
+    }
+  }
 }

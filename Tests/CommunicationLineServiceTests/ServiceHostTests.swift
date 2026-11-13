@@ -100,6 +100,24 @@ struct ServiceHostTests {
     #expect(response.failure?.code == .badRequest, "the new instance serves on the old path")
   }
 
+  @Test func test_aSocketOfAnotherUser_isNotReplaced() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let first = try ServiceHost.start(storeFolder: folder)
+    let path = first.socketPath
+    first.stop()
+    try leaveStaleSocket(at: path)
+    let someoneElse = UInt32(geteuid()) + 1
+
+    #expect(
+      throws: ServiceHostError.unexpectedFileAtSocketPath(path),
+      "a socket the service's user does not own is left alone"
+    ) {
+      _ = try ServiceHost.start(storeFolder: folder, userID: someoneElse)
+    }
+    #expect(FileManager.default.fileExists(atPath: path), "the foreign socket file is still there")
+  }
+
   @Test func test_aPeerWithAnotherUserID_isNotServed() throws {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

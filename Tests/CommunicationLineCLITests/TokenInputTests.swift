@@ -79,4 +79,17 @@ struct CommandExitStatusTests {
       #expect(status.rawValue == value, "\(status) is \(value)")
     }
   }
+
+  @Test func test_aTokenFileOfAnotherUser_isRefused() throws {
+    let path = try tokenFile(mode: 0o600)
+    defer { unlink(path) }
+    let someoneElse = UInt32(geteuid()) + 1
+    let strict = TokenReader(standardInput: { nil }, userID: someoneElse)
+
+    #expect(throws: TokenInputError.notOwnedByUser(path), "the file is not owned by that user") {
+      _ = try strict.read(tokenFile: path)
+    }
+    #expect(
+      try reader().read(tokenFile: path) == "tok-1234", "the owner of the file reads it as before")
+  }
 }
