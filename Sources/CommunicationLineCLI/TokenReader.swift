@@ -16,16 +16,21 @@ public enum TokenInputError: Error, Equatable {
 /// from the environment, where other processes could see it.
 public struct TokenReader {
   private let standardInput: () throws -> String?
+  private let userID: UInt32
 
-  /// `standardInput` returns the first line of standard input, or nil when there is none.
-  public init(standardInput: @escaping () throws -> String?) {
+  /// `standardInput` returns the first line of standard input, or nil when there is none. A token
+  /// file must belong to `userID`, which is the current user unless a test says otherwise.
+  public init(
+    standardInput: @escaping () throws -> String?, userID: UInt32 = UInt32(geteuid())
+  ) {
     self.standardInput = standardInput
+    self.userID = userID
   }
 
   public func read(tokenFile: String?) throws -> String {
     let raw: String
     if let tokenFile {
-      raw = try Self.contents(ofPrivateFile: tokenFile)
+      raw = try contents(ofPrivateFile: tokenFile)
     } else {
       guard let line = try standardInput() else { throw TokenInputError.notSupplied }
       raw = line
@@ -37,7 +42,7 @@ public struct TokenReader {
     return token
   }
 
-  private static func contents(ofPrivateFile path: String) throws -> String {
+  private func contents(ofPrivateFile path: String) throws -> String {
     // O_NOFOLLOW: a link could point at a file that is private only by accident.
     let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
     guard descriptor >= 0 else { throw TokenInputError.unreadable(path) }
@@ -45,7 +50,7 @@ public struct TokenReader {
     var info = stat()
     guard fstat(descriptor, &info) == 0 else { throw TokenInputError.unreadable(path) }
     guard (info.st_mode & S_IFMT) == S_IFREG else { throw TokenInputError.notRegularFile(path) }
-    guard info.st_uid == geteuid() else { throw TokenInputError.notOwnedByUser(path) }
+    guard info.st_uid == userID else { throw TokenInputError.notOwnedByUser(path) }
     let permissions = Int(info.st_mode & 0o7777)
     guard permissions & 0o077 == 0 else {
       throw TokenInputError.insecureMode(path: path, mode: permissions)

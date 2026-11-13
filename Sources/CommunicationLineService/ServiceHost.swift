@@ -49,13 +49,14 @@ public final class ServiceHost: @unchecked Sendable {
   /// Takes the instance lock, opens the store, replaces a stale socket and starts listening.
   public static func start(
     storeFolder: URL, peerReader: any PeerCredentialReader = SystemPeerCredentialReader(),
-    requestTimeout: TimeInterval = 10, reporter: any FailureReporter = StandardErrorReporter()
+    requestTimeout: TimeInterval = 10, reporter: any FailureReporter = StandardErrorReporter(),
+    userID: UInt32 = UInt32(geteuid())
   ) throws -> ServiceHost {
     try StoreFolder.prepare(storeFolder, waitingUpTo: 5000)
     let lock = try InstanceLock(path: storeFolder.appendingPathComponent(lockName).path)
     let runtime = try ServiceRuntime.open(storeFolder: storeFolder, reporter: reporter)
     let path = storeFolder.appendingPathComponent(socketName).path
-    try removeStaleSocket(at: path)
+    try removeStaleSocket(at: path, ownedBy: userID)
     let listener = try listen(at: path)
     let host = ServiceHost(
       runtime: runtime, lock: lock, listener: listener, socketPath: path, peerReader: peerReader,
@@ -107,10 +108,10 @@ public final class ServiceHost: @unchecked Sendable {
 
   // MARK: - Socket setup
 
-  private static func removeStaleSocket(at path: String) throws {
+  private static func removeStaleSocket(at path: String, ownedBy userID: UInt32) throws {
     var info = stat()
     guard lstat(path, &info) == 0 else { return }
-    guard (info.st_mode & S_IFMT) == S_IFSOCK, info.st_uid == geteuid() else {
+    guard (info.st_mode & S_IFMT) == S_IFSOCK, info.st_uid == userID else {
       throw ServiceHostError.unexpectedFileAtSocketPath(path)
     }
     // The instance lock is ours, so no live instance owns this socket.
