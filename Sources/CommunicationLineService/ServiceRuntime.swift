@@ -72,6 +72,7 @@ public final class ServiceRuntime {
       authenticator: identity, settings: settings, identifiers: UUIDIdentifierSource(),
       clock: clock, arrival: arrival,
       waitQuota: WaitQuota())
+    try applyStoredBusyTimeout(catalog: catalog, settings: settingsStore, to: store)
     let frameMaximum = try frameMaximum(catalog: catalog, store: settingsStore)
     let activity = ActivityService(
       store: SQLiteActivityStore(store: store), identity: identity, settings: settings,
@@ -124,6 +125,25 @@ public final class ServiceRuntime {
     }
     return value
   }
+
+  /// The store opens with the catalog default, because the stored value lives inside it; once it is
+  /// open, an override of `store.busy_timeout` replaces the default for every later operation.
+  private static func applyStoredBusyTimeout(
+    catalog: SettingsCatalog, settings: any SettingsStore, to store: SQLiteStore
+  ) throws {
+    let key = "store.busy_timeout"
+    guard let definition = catalog.definition(for: key) else {
+      throw ServiceRuntimeError.missingSetting(key)
+    }
+    let stored = try settings.storedValues(key: key, family: nil, principal: nil)
+    let value = definition.effectiveValue(principal: nil, family: nil, global: stored.global)
+    guard case .integer(let milliseconds) = value, milliseconds >= 0 else {
+      throw ServiceRuntimeError.missingSetting(key)
+    }
+    try store.setBusyTimeout(milliseconds: Int(milliseconds))
+  }
+
+  public var busyTimeoutMilliseconds: Int { store.busyTimeoutMilliseconds }
 
   private static func frameMaximum(catalog: SettingsCatalog, store: any SettingsStore) throws -> Int
   {

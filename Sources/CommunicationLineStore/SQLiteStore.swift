@@ -12,9 +12,18 @@ public enum StorePragma: String {
 /// The database of the product: write-ahead logging, enforced foreign keys and numbered migrations.
 public final class SQLiteStore {
   let database: SQLiteDatabase
+  public private(set) var busyTimeoutMilliseconds: Int
 
-  private init(database: SQLiteDatabase) {
+  private init(database: SQLiteDatabase, busyTimeoutMilliseconds: Int) {
     self.database = database
+    self.busyTimeoutMilliseconds = busyTimeoutMilliseconds
+  }
+
+  /// Changes how long an operation waits for a lock held by another process.
+  public func setBusyTimeout(milliseconds: Int) throws {
+    guard milliseconds >= 0 else { throw StoreError.invalidBusyTimeout(milliseconds) }
+    try database.setBusyTimeout(milliseconds: milliseconds)
+    busyTimeoutMilliseconds = milliseconds
   }
 
   /// Opens or creates the database at `path` and brings its schema to the latest migration.
@@ -61,7 +70,7 @@ public final class SQLiteStore {
         }
       }
       try StoreFilesystem.verifySidecars(of: path)
-      return SQLiteStore(database: database)
+      return SQLiteStore(database: database, busyTimeoutMilliseconds: busyTimeoutMilliseconds)
     }
   }
 

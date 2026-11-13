@@ -59,6 +59,13 @@ public final class FileDescriptorStream: ByteSource, ByteSink, @unchecked Sendab
 }
 
 public enum UnixSocket {
+  /// Checks the path before a descriptor is opened for it.
+  public static func requireFits(path: String) throws {
+    let limit = MemoryLayout.size(ofValue: sockaddr_un().sun_path) - 1
+    let length = path.utf8.count
+    guard length <= limit else { throw UnixSocketError.pathTooLong(length: length, limit: limit) }
+  }
+
   /// Applies `body` to the address of the socket at `path`.
   public static func withAddress<Result>(
     path: String, _ body: (UnsafePointer<sockaddr>, socklen_t) throws -> Result
@@ -98,6 +105,7 @@ public enum UnixSocket {
 
 public enum UnixSocketClient {
   public static func connect(path: String) throws -> FileDescriptorStream {
+    try UnixSocket.requireFits(path: path)
     let descriptor = try UnixSocket.makeStreamSocket()
     let result = try UnixSocket.withAddress(path: path) { Darwin.connect(descriptor, $0, $1) }
     guard result == 0 else {

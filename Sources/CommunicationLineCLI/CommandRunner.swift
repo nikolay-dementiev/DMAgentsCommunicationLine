@@ -170,6 +170,10 @@ public struct CommandRunner {
       } catch ServiceConnectionError.invalidResponse {
         guard environment.directoryExists(folder) else { return notInstalled(folder) }
         environment.pause(Self.reconnectPause)
+      } catch ServiceConnectionError.pathTooLong(let path) {
+        standardError(
+          "commline: the socket path is too long and waiting longer will not help: \(path)")
+        return CommandExitStatus.failure.rawValue
       } catch {
         standardError("commline: \(error)")
         return CommandExitStatus.failure.rawValue

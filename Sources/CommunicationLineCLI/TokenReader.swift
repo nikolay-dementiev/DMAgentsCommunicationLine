@@ -44,7 +44,8 @@ public struct TokenReader {
 
   private func contents(ofPrivateFile path: String) throws -> String {
     // O_NOFOLLOW: a link could point at a file that is private only by accident.
-    let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)
+    // O_NONBLOCK: opening a pipe with no writer would otherwise wait for one before the type is checked.
+    let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
     guard descriptor >= 0 else { throw TokenInputError.unreadable(path) }
     defer { close(descriptor) }
     var info = stat()

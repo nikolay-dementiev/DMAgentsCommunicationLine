@@ -6,6 +6,8 @@ public enum ServiceConnectionError: Error, Equatable {
   case unreachable(String)
   /// The service answered with bytes that are not a valid response.
   case invalidResponse
+  /// The socket path does not fit the address structure, so no retry can help.
+  case pathTooLong(String)
 }
 
 /// One request to the service and its one answer.
@@ -33,7 +35,7 @@ public struct SocketServiceConnection: ServiceConnection {
       let reason = String(cString: strerror(code))
       throw ServiceConnectionError.unreachable("\(operation) \(socketPath): \(reason)")
     } catch UnixSocketError.pathTooLong {
-      throw ServiceConnectionError.unreachable("the socket path is too long: \(socketPath)")
+      throw ServiceConnectionError.pathTooLong(socketPath)
     } catch is FrameError {
       throw ServiceConnectionError.invalidResponse
     } catch is WireError {
