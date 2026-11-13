@@ -80,6 +80,15 @@
       "range": { "min": 1, "max": 100 },
       "scopes": ["global"],
       "description": "The most messages one inbox page returns."
+    },
+    {
+      "key": "service.frame_max",
+      "type": "bytes",
+      "unit": "bytes",
+      "default": 2097152,
+      "range": { "min": 4096, "max": 16777216 },
+      "scopes": ["global"],
+      "description": "The largest request or response frame on the service socket. A larger frame is refused before its body is read."
     }
   ]
 }

@@ -47,7 +47,10 @@ Deciding who may change a setting is not part of this layer.
 | `messaging.subject_max` | bytes | 512 | 1..512 | global |
 | `messaging.body_max` | bytes | 262144 | 1..262144 | global |
 | `messaging.page_size` | integer, messages | 100 | 1..100 | global |
+| `service.frame_max` | bytes | 2097152 | 4096..16777216 | global |
 
 `messaging.wait` is the default and the maximum time a wait may stay parked; zero turns parked waits off, so a wait only reports pending mail.
 The subject and body limits count UTF-8 bytes. The three `messaging.*` size keys are v0.1 proposals that split the
 `wire.text` limits of the design into one key each; they are open until the v0.1 release.
+`service.frame_max` is a v0.1 proposal too: the largest frame on the service socket. The default admits a message at
+the size limits even when every character is escaped in JSON. The service reads it once, at start.
