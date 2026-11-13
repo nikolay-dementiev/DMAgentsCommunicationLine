@@ -483,3 +483,94 @@ struct ConnectionLimitTests {
     #expect(answer.isSuccess, "the deadline covers the sending of a request, not its answer")
   }
 }
+
+struct ParkedWaitDisconnectTests {
+  private func ask(
+    _ host: ServiceHost, _ operation: String, token: String? = nil,
+    _ arguments: [String: WireValue] = [:]
+  ) throws -> WireResponse {
+    try SocketExchange.call(
+      socketPath: host.socketPath,
+      request: WireRequest(token: token, operation: operation, arguments: arguments),
+      maximumFrame: host.frameMaximum)
+  }
+
+  private func field(_ name: String, of response: WireResponse) throws -> String {
+    guard case .object(let fields)? = response.result, case .string(let value)? = fields[name]
+    else { throw POSIXError(.EIO) }
+    return value
+  }
+
+  private func agent(on host: ServiceHost, owner: String, name: String) throws -> String {
+    let created = try ask(
+      host, "principal.create", token: owner,
+      ["family": .string("f"), "role": .string("agent"), "name": .string(name)])
+    return try field(
+      "token",
+      of: try ask(
+        host, "credential.issue", token: owner,
+        ["principal": .string(try field("id", of: created))]))
+  }
+
+  /// Sends a wait over a raw connection and returns the connection, without reading the answer.
+  private func park(_ host: ServiceHost, token: String) throws -> FileDescriptorStream {
+    let client = try UnixSocketClient.connect(path: host.socketPath)
+    let request = WireRequest(
+      token: token, operation: "wait", arguments: ["timeout": .integer(30)])
+    try FrameCodec(maximumSize: host.frameMaximum).writeFrame(
+      try WireCoding.encode(request), to: client)
+    Thread.sleep(forTimeInterval: 0.4)
+    return client
+  }
+
+  @Test func test_aParkedWait_endsWhenItsClientDisconnects_andFreesItsConnectionPlace() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 30, connectionLimit: 2)
+    defer { host.stop() }
+    let owner = try field("token", of: try ask(host, "owner.credential"))
+    let waiter = try agent(on: host, owner: owner, name: "a")
+    let parked = try park(host, token: waiter)
+    // The second place is taken by a connection that stays silent, so the next request can only
+    // be served once the parked wait has let go of its place.
+    let filler = try UnixSocketClient.connect(path: host.socketPath)
+    defer { filler.close() }
+    parked.close()
+    let started = Date()
+
+    var listed: WireResponse?
+    while listed?.isSuccess != true && Date().timeIntervalSince(started) < 3 {
+      listed = try? ask(host, "activity.list", token: owner)
+      if listed?.isSuccess != true { Thread.sleep(forTimeInterval: 0.05) }
+    }
+
+    #expect(listed?.isSuccess == true, "the wait ended and gave its connection place back")
+    let listing = String(describing: listed?.result)
+    #expect(listing.contains("wait"), "the wait was recorded")
+  }
+
+  @Test func test_aParkedWait_whoseClientDisconnected_freesItsWaiterSlot() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 30)
+    defer { host.stop() }
+    let owner = try field("token", of: try ask(host, "owner.credential"))
+    for key in ["limits.waits.principal", "limits.waits.global"] {
+      _ = try ask(
+        host, "setting.set", token: owner, ["key": .string(key), "value": .integer(1)])
+    }
+    let waiter = try agent(on: host, owner: owner, name: "a")
+    let parked = try park(host, token: waiter)
+    parked.close()
+    let started = Date()
+
+    var outcome = "refused"
+    while outcome != "timeout" && Date().timeIntervalSince(started) < 3 {
+      let answer = try ask(host, "wait", token: waiter, ["timeout": .integer(1)])
+      outcome = (try? field("outcome", of: answer)) ?? "refused"
+      if outcome != "timeout" { Thread.sleep(forTimeInterval: 0.05) }
+    }
+
+    #expect(outcome == "timeout", "the same agent can wait again: the dead wait gave up its slot")
+  }
+}
