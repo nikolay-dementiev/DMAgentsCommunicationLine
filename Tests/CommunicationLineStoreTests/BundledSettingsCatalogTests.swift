@@ -14,6 +14,8 @@ import Testing
       defaults == [
         "store.busy_timeout": .integer(5000),
         "retention.messages.live": .integer(90),
+        "retention.activity.live": .integer(90),
+        "cleanup.interval": .integer(300),
         "storage.budget": .integer(5_000_000_000),
         "storage.warning_percent": .integer(80),
         "health.threshold": .integer(1800),
@@ -49,6 +51,12 @@ import Testing
     #expect(
       catalog.definition(for: "service.frame_max")?.range
         == SettingRange(minimum: 4096, maximum: 16_777_216), "frame limit is 4096..16777216")
+    #expect(
+      catalog.definition(for: "retention.activity.live")?.range
+        == SettingRange(minimum: 1, maximum: 3650), "activity retention is 1..3650 days")
+    #expect(
+      catalog.definition(for: "cleanup.interval")?.range
+        == SettingRange(minimum: 1, maximum: 300), "the cleanup interval is 1..300 seconds")
     #expect(
       catalog.definition(for: "health.threshold")?.scopes == [.global, .family, .principal],
       "the overdue threshold is settable per family and per principal")
