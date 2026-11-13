@@ -228,6 +228,19 @@ import Testing
     #expect(try fixture.service.authenticate(fresh) == .principal(principal), "the new one works")
   }
 
+  @Test func test_enable_onAnAlreadyEnabledPrincipal_keepsItsLiveToken() throws {
+    let fixture = try IdentityFixture()
+    let principal = try fixture.service.createPrincipal(
+      family: "ops", role: .agent, displayName: "x", ownerToken: fixture.owner)
+    let live = try fixture.service.issueCredential(for: principal.id, ownerToken: fixture.owner)
+
+    try fixture.service.enablePrincipal(principal.id, ownerToken: fixture.owner)
+
+    #expect(
+      try fixture.service.authenticate(live) == .principal(principal),
+      "re-enabling an enabled principal changes nothing, its token still works")
+  }
+
   @Test func test_ownerToken_neverAuthenticatesAsAPrincipalAndAnAgentTokenNeverAsTheOwner() throws {
     let fixture = try IdentityFixture()
     let agent = try makeAgentToken(fixture)
