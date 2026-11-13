@@ -9,6 +9,7 @@ let package = Package(
     .library(name: "CommunicationLineDomain", targets: ["CommunicationLineDomain"]),
     .library(name: "CommunicationLineApplication", targets: ["CommunicationLineApplication"]),
     .library(name: "CommunicationLineStore", targets: ["CommunicationLineStore"]),
+    .library(name: "CommunicationLineWire", targets: ["CommunicationLineWire"]),
   ],
   targets: [
     .target(name: "CommunicationLineDomain"),
@@ -20,6 +21,11 @@ let package = Package(
       name: "CommunicationLineStore",
       dependencies: ["CommunicationLineDomain", "CommunicationLineApplication"],
       resources: [.copy("Resources/settings-defaults.json")]
+    ),
+    .target(name: "CommunicationLineWire"),
+    .testTarget(
+      name: "CommunicationLineWireTests",
+      dependencies: ["CommunicationLineWire"]
     ),
     .testTarget(
       name: "CommunicationLineDomainTests",
