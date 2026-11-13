@@ -35,6 +35,7 @@ let package = Package(
       name: "CommunicationLineServiceTests",
       dependencies: [
         "CommunicationLineService", "CommunicationLineWire", "CommunicationLineDomain",
+        "CommunicationLineApplication",
       ]
     ),
     .testTarget(
