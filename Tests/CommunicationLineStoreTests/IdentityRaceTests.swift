@@ -24,13 +24,14 @@ import Testing
   private func race(
     on path: URL, callers: Int = 8, _ action: @escaping (IdentityService) throws -> CredentialToken
   ) throws -> [Outcome] {
-    let services = try (0..<callers).map { _ in try service(on: path) }
+    nonisolated(unsafe) let services = try (0..<callers).map { _ in try service(on: path) }
+    nonisolated(unsafe) let run = action
     let lock = NSLock()
     nonisolated(unsafe) var outcomes: [Outcome] = []
     DispatchQueue.concurrentPerform(iterations: callers) { index in
       let outcome: Outcome
       do {
-        outcome = .token(try action(services[index]))
+        outcome = .token(try run(services[index]))
       } catch {
         outcome = .failure("\(error)")
       }

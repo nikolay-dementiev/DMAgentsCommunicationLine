@@ -92,7 +92,7 @@ struct DispatcherActivityTests {
     let refused = world.fixture.call(
       "rule.add", token: world.bob.token, ["from": .string("A"), "to": .string("B")])
     let bad = world.fixture.call("inbox", token: String(repeating: "A", count: 43))
-    let unknown = world.fixture.call("frobnicate-secret-name")
+    _ = world.fixture.call("frobnicate-secret-name")
     let all = try records(world)
 
     #expect(refused.failure?.code == .ownerRequired, "the request itself is still refused")

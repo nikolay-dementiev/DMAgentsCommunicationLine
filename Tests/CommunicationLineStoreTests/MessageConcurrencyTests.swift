@@ -18,7 +18,7 @@ import Testing
 
   @Test func test_readOnAnotherThread_waitsForAnOpenSendTransactionToCommit() throws {
     let fixture = try MessagingFixture()
-    let store = SQLiteMessageStore(store: fixture.identity.store)
+    nonisolated(unsafe) let store = SQLiteMessageStore(store: fixture.identity.store)
     let inTransaction = DispatchSemaphore(value: 0)
     let proceed = DispatchSemaphore(value: 0)
     let sender = fixture.alpha.id

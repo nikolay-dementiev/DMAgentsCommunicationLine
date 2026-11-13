@@ -52,11 +52,12 @@ final class Child: @unchecked Sendable {
   /// Reads a pipe to its end on its own thread, so no output is lost when the child exits first.
   private func drain(_ pipe: Pipe, into buffer: ReferenceWritableKeyPath<Child, Data>) {
     let handle = pipe.fileHandleForReading
+    nonisolated(unsafe) let target = buffer
     Thread.detachNewThread { [self] in
       while true {
         let chunk = handle.availableData
         if chunk.isEmpty { break }
-        lock.withLock { self[keyPath: buffer].append(chunk) }
+        lock.withLock { self[keyPath: target].append(chunk) }
       }
       readersDone.signal()
     }
