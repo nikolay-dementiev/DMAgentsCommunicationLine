@@ -143,12 +143,17 @@ enum Renderer {
 
   /// Text chosen by an agent can carry terminal control sequences. Printing it raw would let one
   /// agent drive the terminal of the person reading it, so control characters are written as
-  /// `\u{1b}`. `--json` is not affected: it prints the text exactly.
+  /// `\u{1b}`. Bidirectional controls and the Unicode line and paragraph separators are escaped
+  /// too: they can reorder or hide text on screen. `--json` is not affected: it prints the text
+  /// exactly.
   static func escaped(_ text: String, keepingLayout: Bool = false) -> String {
     var result = ""
     for scalar in text.unicodeScalars {
       let value = scalar.value
-      let isControl = value < 0x20 || value == 0x7F || (0x80...0x9F).contains(value)
+      let isControl =
+        value < 0x20 || value == 0x7F || (0x80...0x9F).contains(value)
+        || (0x202A...0x202E).contains(value) || (0x2066...0x2069).contains(value)
+        || value == 0x2028 || value == 0x2029
       let isLayout = keepingLayout && (value == 0x0A || value == 0x09)
       if isControl && !isLayout {
         result += "\\u{" + String(value, radix: 16) + "}"
