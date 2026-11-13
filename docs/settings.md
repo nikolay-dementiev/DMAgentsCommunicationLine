@@ -44,8 +44,8 @@ Deciding who may change a setting is not part of this layer.
 | `storage.warning_percent` | integer, percent | 80 | 1..98 | global |
 | `health.threshold` | duration, seconds | 1800 | 60..86400 | global, family, principal |
 | `messaging.wait` | duration, seconds | 900 | 0..900 | global |
-| `messaging.subject_max` | bytes | 512 | 1..4096 | global |
-| `messaging.body_max` | bytes | 262144 | 1..1048576 | global |
+| `messaging.subject_max` | bytes | 512 | 1..512 | global |
+| `messaging.body_max` | bytes | 262144 | 1..262144 | global |
 | `messaging.page_size` | integer, messages | 100 | 1..100 | global |
 
 `messaging.wait` is the default and the maximum time a wait may stay parked; zero turns parked waits off, so a wait only reports pending mail.
