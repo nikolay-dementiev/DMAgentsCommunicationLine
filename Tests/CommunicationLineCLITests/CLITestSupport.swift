@@ -21,6 +21,20 @@ final class FakeConnection: ServiceConnection, @unchecked Sendable {
   }
 }
 
+/// Records the host commands it is given and answers from a script.
+final class FakeHost: HostCommands, @unchecked Sendable {
+  private let lock = NSLock()
+  private(set) var installs: [String?] = []
+  private let result: Result<[String], any Error>
+
+  init(result: Result<[String], any Error> = .success(["installed"])) { self.result = result }
+
+  func install(home: String?) throws -> [String] {
+    lock.withLock { installs.append(home) }
+    return try result.get()
+  }
+}
+
 /// A runner on a fake connection, with its captured output.
 final class CLIHarness: @unchecked Sendable {
   let connection: FakeConnection
@@ -29,15 +43,17 @@ final class CLIHarness: @unchecked Sendable {
   private(set) var connectedSockets: [String] = []
   private var standardInput: String?
   private let encode: @Sendable (WireValue) throws -> Data
+  let host: FakeHost
 
   init(
-    stdin: String? = nil,
+    stdin: String? = nil, host: FakeHost = FakeHost(),
     encode: @escaping @Sendable (WireValue) throws -> Data = { try WireCoding.encode($0) },
     answer: @escaping @Sendable (WireRequest) throws -> WireResponse = { _ in .success() }
   ) {
     connection = FakeConnection(answer: answer)
     standardInput = stdin
     self.encode = encode
+    self.host = host
   }
 
   func run(_ arguments: [String]) -> Int32 {
@@ -48,7 +64,7 @@ final class CLIHarness: @unchecked Sendable {
       },
       tokenReader: TokenReader(standardInput: { self.standardInput }),
       standardOutput: { self.standardOutput += $0 + "\n" },
-      standardError: { self.standardError += $0 + "\n" }, encode: encode)
+      standardError: { self.standardError += $0 + "\n" }, host: host, encode: encode)
     return runner.run(arguments)
   }
 }
