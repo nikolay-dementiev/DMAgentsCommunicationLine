@@ -43,15 +43,21 @@ public struct OwnerRecovery {
     guard FileManager.default.fileExists(atPath: layout.manifestURL.path) else {
       throw InstallError.notInstalled
     }
-    if try launchd.isLoaded(label: HostLayout.launchAgentLabel, userID: userID) {
+    let wasLoaded = try launchd.isLoaded(label: HostLayout.launchAgentLabel, userID: userID)
+    if wasLoaded {
       try launchd.bootout(label: HostLayout.launchAgentLabel, userID: userID)
     }
-    let token = try issueToken()
     do {
-      try HostFiles.replace(
-        Data((token.encoded + "\n").utf8), at: layout.ownerTokenURL, mode: 0o600)
+      let token = try issueToken()
+      do {
+        try HostFiles.replace(
+          Data((token.encoded + "\n").utf8), at: layout.ownerTokenURL, mode: 0o600)
+      } catch {
+        throw InstallError.ownerTokenNotWritten("\(error)")
+      }
     } catch {
-      throw InstallError.ownerTokenNotWritten("\(error)")
+      if wasLoaded { try restartAfterFailure(of: error) }
+      throw error
     }
     try launchd.bootstrap(plist: layout.plistURL, userID: userID)
     do {
@@ -60,6 +66,17 @@ public struct OwnerRecovery {
       throw InstallError.serviceNotReady("\(error); see \(layout.logURL.path)")
     }
     return OwnerRecoveryReport(ownerTokenPath: layout.ownerTokenURL.path)
+  }
+
+  /// The service ran before the recovery began, so a failed recovery must not leave it stopped.
+  /// The original failure stays the error; a failed restart is added to it.
+  private func restartAfterFailure(of failure: any Error) throws {
+    do {
+      try launchd.bootstrap(plist: layout.plistURL, userID: userID)
+    } catch {
+      throw InstallError.launchd(
+        "\(failure); the service could not be started again either: \(error)")
+    }
   }
 
   private func issueToken() throws -> CredentialToken {
