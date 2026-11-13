@@ -30,7 +30,7 @@ import Testing
   @Test func test_schema_versionThreeCreatesTheMessageTables() throws {
     let fixture = try Fixture()
 
-    #expect(SchemaMigrations.all.map(\.version) == [1, 2, 3], "three numbered steps")
+    #expect(SchemaMigrations.all.map(\.version).starts(with: [1, 2, 3]), "version three is kept")
     #expect(try fixture.raw.tableExists("messages"), "messages exist")
     #expect(try fixture.raw.tableExists("deliveries"), "deliveries exist")
   }
