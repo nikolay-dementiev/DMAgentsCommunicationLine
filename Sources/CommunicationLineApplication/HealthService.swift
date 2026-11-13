@@ -11,20 +11,43 @@ public struct PendingCount: Equatable, Sendable {
   }
 }
 
-/// A delivery as the health report reads it from the store.
+/// A principal that has mail waiting, with its family, which decides the overdue threshold.
+public struct PendingRecipient: Equatable, Sendable {
+  public let principal: PrincipalID
+  public let family: String
+  public let count: Int
+
+  public init(principal: PrincipalID, family: String, count: Int) {
+    self.principal = principal
+    self.family = family
+    self.count = count
+  }
+}
+
+/// A pending delivery as the health report reads it from the store.
 public struct PendingDelivery: Equatable, Sendable {
   public let message: MessageID
   public let recipient: PrincipalID
-  public let recipientFamily: String
   public let createdAt: Date
+  /// The order in which deliveries were stored, to order deliveries sent in the same instant.
+  public let sequence: Int64
 
-  public init(
-    message: MessageID, recipient: PrincipalID, recipientFamily: String, createdAt: Date
-  ) {
+  public init(message: MessageID, recipient: PrincipalID, createdAt: Date, sequence: Int64) {
     self.message = message
     self.recipient = recipient
-    self.recipientFamily = recipientFamily
     self.createdAt = createdAt
+    self.sequence = sequence
+  }
+}
+
+/// How many deliveries of one recipient are past a cutoff, and the oldest few of them.
+public struct OverdueSlice: Equatable, Sendable {
+  public let total: Int
+  public let oldest: [PendingDelivery]
+
+  public init(total: Int, oldest: [PendingDelivery]) {
+    self.total = total
+    self.oldest = oldest
   }
 }
 
@@ -59,10 +82,12 @@ public struct HealthReport: Equatable, Sendable {
 }
 
 public protocol HealthStore {
-  /// Pending deliveries per recipient.
-  func pendingCounts() throws -> [PendingCount]
-  /// Pending deliveries of messages created before `cutoff`, oldest first.
-  func pendingDeliveries(createdBefore cutoff: Date) throws -> [PendingDelivery]
+  /// Every principal with pending mail, with how much.
+  func pendingRecipients() throws -> [PendingRecipient]
+  /// The pending deliveries of `recipient` created at or before `cutoff`: their number, and the
+  /// oldest `limit` of them.
+  func overdue(of recipient: PrincipalID, createdAtOrBefore cutoff: Date, limit: Int) throws
+    -> OverdueSlice
 }
 
 /// What the owner sees of the service: who has mail waiting, what is overdue, how full the database
@@ -92,34 +117,49 @@ public struct HealthService {
   public func report(ownerToken: CredentialToken) throws -> HealthReport {
     try identity.authenticateOwner(ownerToken)
     let now = clock.now()
-    let overdue = try overdueDeliveries(now: now)
     let page = try pageSize()
+    let recipients = try store.pendingRecipients()
+    let overdue = try overdueDeliveries(of: recipients, now: now, page: page)
     let status = try storage.status()
     return HealthReport(
-      startedAt: startedAt, pending: try store.pendingCounts(), overdueCount: overdue.count,
-      overdue: Array(overdue.prefix(page)), storage: status,
-      warnings: status.isWarning ? [.storageBudget] : [], lastCleanup: cleanup.latest)
+      startedAt: startedAt,
+      pending: recipients.map { PendingCount(principal: $0.principal, count: $0.count) },
+      overdueCount: overdue.count,
+      overdue: overdue.oldest.map { entry in
+        OverdueDelivery(
+          message: entry.message, recipient: entry.recipient,
+          age: Int(now.timeIntervalSince(entry.createdAt)))
+      }, storage: status, warnings: status.isWarning ? [.storageBudget] : [],
+      lastCleanup: cleanup.latest)
   }
 
-  private func overdueDeliveries(now: Date) throws -> [OverdueDelivery] {
-    var thresholds: [PrincipalID: Int64] = [:]
-    var found: [OverdueDelivery] = []
-    for delivery in try store.pendingDeliveries(createdBefore: now) {
-      let threshold = try thresholds[delivery.recipient] ?? threshold(for: delivery)
-      thresholds[delivery.recipient] = threshold
-      let age = Int(now.timeIntervalSince(delivery.createdAt))
-      if Int64(age) > threshold {
-        found.append(
-          OverdueDelivery(message: delivery.message, recipient: delivery.recipient, age: age))
-      }
+  /// A delivery is overdue when its age in whole seconds is more than the threshold of its
+  /// recipient, so it must have been created at least `threshold + 1` seconds ago. Each recipient
+  /// is asked for one page at most, and the pages are merged.
+  private func overdueDeliveries(of recipients: [PendingRecipient], now: Date, page: Int) throws
+    -> (count: Int, oldest: [PendingDelivery])
+  {
+    var count = 0
+    var candidates: [PendingDelivery] = []
+    for recipient in recipients {
+      let seconds = try threshold(for: recipient)
+      let cutoff = now.addingTimeInterval(-Double(seconds) - 1)
+      let slice = try store.overdue(
+        of: recipient.principal, createdAtOrBefore: cutoff, limit: page)
+      count += slice.total
+      candidates += slice.oldest
     }
-    return found
+    candidates.sort {
+      ($0.createdAt, $0.sequence) < ($1.createdAt, $1.sequence)
+    }
+    return (count, Array(candidates.prefix(page)))
   }
 
-  private func threshold(for delivery: PendingDelivery) throws -> Int64 {
+  private func threshold(for recipient: PendingRecipient) throws -> Int64 {
     guard
       case .integer(let seconds) = try settings.value(
-        of: "health.threshold", family: delivery.recipientFamily, principal: delivery.recipient)
+        of: "health.threshold", family: recipient.family, principal: recipient.principal),
+      seconds >= 0, seconds < Int64(Int32.max)
     else { throw CleanupError.invalidSetting("health.threshold") }
     return seconds
   }
