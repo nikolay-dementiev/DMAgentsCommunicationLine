@@ -58,6 +58,19 @@ struct SystemLaunchdTests {
     #expect(loaded.commands == [["/bin/launchctl", "print", "gui/501/l"]], "launchctl print")
   }
 
+  @Test func test_isLoaded_onlyANotFoundAnswerMeansNotLoaded() {
+    for status in [Int32(112), 5, 1] {
+      let runner = ScriptedRunner(status: status, output: "no domain")
+
+      #expect(
+        throws: InstallError.launchd("print failed (\(status)): no domain"),
+        "status \(status) is not a not-found answer, so it is an error"
+      ) {
+        _ = try SystemLaunchd(runner: runner).isLoaded(label: "l", userID: 501)
+      }
+    }
+  }
+
   @Test func test_aFailingLaunchctl_isAnErrorThatCarriesItsOutput() {
     let runner = ScriptedRunner(status: 5, output: "Bootstrap failed: 5: Input/output error")
 
