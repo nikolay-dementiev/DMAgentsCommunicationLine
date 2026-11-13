@@ -41,7 +41,21 @@ writable by group or others (mode 0600). Otherwise the command stops before it c
 | `inbox` | any | `--after <cursor>`. Prints one `id`, `sender`, `created_at_ms`, `subject` line per message (tab separated) and `next: <cursor>` when more follow |
 | `read <message-id>` | any | Prints `From:`, `To:`, `Subject:`, an empty line and the body. Does not acknowledge |
 | `acknowledge <message-id>` | any | |
+| `agent add` | owner | `--family`, `--role head\|agent`, `--name`, `--client claude-code`, `--home`. Prints the principal id and the files written |
 | `wait` | any | `--timeout <seconds>`. Prints `mail` or `timeout` |
+| `wait --until-mail` | any | No time limit: repeats the cycles and reconnects after a service restart. Prints `mail` and exits 0 only when mail is pending. Not combinable with `--timeout` |
+
+## Host commands
+
+These act on the machine, not on the service, and need no `--store`, `--socket` or token option:
+
+| Command | Options | What it does |
+|---|---|---|
+| `install` | `--home <folder>` | Installs the service for the caller. See [install](install.md) |
+| `uninstall` | `--home <folder>`, `--delete-data` | Removes what the install wrote; keeps the store unless `--delete-data` and no mail is pending |
+
+`agent add` (see [agents](agents.md)) needs `--store` and the owner token, and writes files under the store
+folder and, for a client, under `--home`.
 
 ## Output
 
@@ -78,3 +92,4 @@ The table is stable. A failure is never 0.
 | 8 | protocol | `bad_request`, `frame_too_large`, `recipient_inbox_full`, `too_many_waiters`, or an answer that is not a response |
 | 9 | timed out | `wait` ended without mail |
 | 10 | token input | The token file is missing, unreadable, not private, or empty, or no token was supplied |
+| 11 | not installed | `wait --until-mail` found no store folder: commline is not installed here, or was removed |
