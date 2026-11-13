@@ -53,6 +53,15 @@ public struct SettingsService {
       principal: stored.principal, family: stored.family, global: stored.global)
   }
 
+  /// The value that applies to one principal: its own row, its family's, global, then the default.
+  /// For the service's own reports, where the principal is not the caller.
+  public func value(of key: String, family: String, principal: PrincipalID) throws -> SettingValue {
+    let definition = try definition(for: key)
+    let stored = try store.storedValues(key: key, family: family, principal: principal.rawValue)
+    return definition.effectiveValue(
+      principal: stored.principal, family: stored.family, global: stored.global)
+  }
+
   /// The global value of a setting, for the service's own work (cleanup, limits) where no caller's
   /// token exists. It never looks at family or principal rows.
   public func serviceValue(of key: String) throws -> SettingValue {
