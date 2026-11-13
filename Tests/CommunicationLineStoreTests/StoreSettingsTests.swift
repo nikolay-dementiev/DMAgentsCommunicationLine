@@ -105,6 +105,23 @@ import Testing
       try raw.integer("SELECT count(*) FROM settings_audit") == 1, "the record is still there")
   }
 
+  @Test func test_audit_cannotBeReplacedByAnInsert() throws {
+    let (settings, scratch) = try makeSUT()
+    _ = try settings.apply(.integer(7), to: limit, actor: "owner", at: instant)
+    let raw = try RawDatabase(path: scratch.storePath)
+
+    #expect(throws: RawDatabaseError.self, "a replacing insert is refused") {
+      try raw.execute(
+        """
+        INSERT OR REPLACE INTO settings_audit (id, at_ms, actor, key, scope, subject, new_value)
+        VALUES (1, 99, 'forged', 'demo.limit', 'global', '', '1')
+        """)
+    }
+    #expect(
+      try raw.integer("SELECT count(*) FROM settings_audit WHERE actor = 'forged'") == 0,
+      "the stored audit record was not rewritten")
+  }
+
   @Test func test_storedValues_unreadableStoredValue_isReportedNotIgnored() throws {
     let (settings, scratch) = try makeSUT()
     let raw = try RawDatabase(path: scratch.storePath)
