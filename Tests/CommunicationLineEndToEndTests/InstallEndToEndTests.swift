@@ -75,6 +75,46 @@ struct InstallEndToEndTests {
       try world.inboxIDs(tokenFile: bob.tokenFile) == [pending.out], "and the mail is still there")
   }
 
+  @Test func test_aCleanInstallAndUninstallWithData_leavesNoFileInTheHome() throws {
+    let world = try InstalledWorld()
+    _ = try world.install()
+    _ = try world.addAgent(family: "ops", name: "alice")
+
+    let removed = try world.uninstall(deleteData: true)
+
+    #expect(removed.storeDeleted, "the store went with it")
+    #expect(world.filesOutsideTheStore().isEmpty, "\(world.filesOutsideTheStore())")
+    #expect(
+      !FileManager.default.fileExists(atPath: world.layout.supportFolder.path),
+      "no install folder is left")
+    #expect(world.launchd.calls.last == "bootout", "the service was stopped")
+  }
+
+  @Test func test_aLostOwnerToken_isRecoveredWithoutLosingMail_andTheOldTokenStopsWorking() throws {
+    let world = try InstalledWorld()
+    _ = try world.install()
+    let alice = try world.addAgent(family: "ops", name: "alice")
+    let bob = try world.addAgent(family: "ops", name: "bob")
+    let sent = try world.run(
+      ["send", "--to", bob.principalID, "--subject", "keep", "--body", "text"],
+      tokenFile: alice.tokenFile)
+    let oldToken = try String(contentsOf: world.layout.ownerTokenURL, encoding: .utf8)
+    try FileManager.default.removeItem(at: world.layout.ownerTokenURL)
+
+    let report = try world.recoverOwner()
+
+    #expect(report.ownerTokenPath == world.layout.ownerTokenURL.path, "the new file is reported")
+    let fresh = try world.run(["rule", "list"], tokenFile: world.layout.ownerTokenURL.path)
+    #expect(fresh.status == 0, "the new owner token works: \(fresh.err)")
+    let oldFile = world.home.url.appendingPathComponent("old.token").path
+    FileManager.default.createFile(
+      atPath: oldFile, contents: Data(oldToken.utf8), attributes: [.posixPermissions: 0o600])
+    #expect(
+      try world.run(["rule", "list"], tokenFile: oldFile).status != 0,
+      "the old owner token no longer works")
+    #expect(try world.inboxIDs(tokenFile: bob.tokenFile) == [sent.out], "pending mail survived")
+  }
+
   @Test func test_aRegistrationThatNeverStartsTheService_failsTheInstallAndDoesNotHang() throws {
     let world = try InstalledWorld(startsService: false, readinessSeconds: 1)
     let started = Date()

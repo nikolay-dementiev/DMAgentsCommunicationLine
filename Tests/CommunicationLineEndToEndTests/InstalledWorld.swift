@@ -81,6 +81,13 @@ final class InstalledWorld: @unchecked Sendable {
     ).install()
   }
 
+  func recoverOwner() throws -> OwnerRecoveryReport {
+    try OwnerRecovery(
+      layout: layout, userID: 501, launchd: launchd, readiness: SocketReadiness(),
+      readinessSeconds: readinessSeconds
+    ).recover()
+  }
+
   func uninstall(deleteData: Bool) throws -> UninstallReport {
     try Uninstaller(
       layout: layout, userID: 501, launchd: launchd, pendingMail: StorePendingMailCounter()
