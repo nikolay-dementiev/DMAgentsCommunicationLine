@@ -41,6 +41,16 @@ struct CommandRequestTests {
     #expect(request.arguments["body"] == .string("from file\n"), "the file is the body")
   }
 
+  @Test func test_send_refusesABodyFileThatIsNotUTF8() {
+    let body = "/tmp/clt-body-" + UUID().uuidString.prefix(8).lowercased()
+    FileManager.default.createFile(atPath: body, contents: Data([0x66, 0xFF, 0xFE, 0x67]))
+    defer { unlink(body) }
+
+    #expect(throws: (any Error).self, "bytes that are not UTF-8 are refused, not rewritten") {
+      _ = try sent(["send", "--to", "p1", "--subject", "s", "--body-file", body])
+    }
+  }
+
   @Test func test_agentCommands_buildTheirRequests() throws {
     #expect(try sent(["inbox"]).arguments.isEmpty, "inbox needs no argument")
     #expect(try sent(["inbox", "--after", "7"]).arguments == ["after": .integer(7)], "cursor")
