@@ -10,13 +10,15 @@ struct AgentSetupTests {
   /// A service that creates one principal and issues one credential.
   private final class ScriptedService: ServiceConnection, @unchecked Sendable {
     private let lock = NSLock()
-    private(set) var requests: [WireRequest] = []
+    private var recorded: [WireRequest] = []
     let refuseWith: WireErrorCode?
+
+    var requests: [WireRequest] { lock.withLock { recorded } }
 
     init(refuseWith: WireErrorCode? = nil) { self.refuseWith = refuseWith }
 
     func exchange(_ request: WireRequest) throws -> WireResponse {
-      lock.withLock { requests.append(request) }
+      lock.withLock { recorded.append(request) }
       if let refuseWith { return .failure(code: refuseWith, message: "refused") }
       switch request.operation {
       case "principal.create": return .success(.object(["id": .string("p-0001")]))

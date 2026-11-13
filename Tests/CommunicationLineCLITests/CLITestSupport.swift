@@ -25,7 +25,7 @@ final class FakeConnection: ServiceConnection, @unchecked Sendable {
 /// Records the host commands it is given and answers from a script.
 final class FakeHost: HostCommands, @unchecked Sendable {
   private let lock = NSLock()
-  private(set) var installs: [String?] = []
+  private var installRecords: [String?] = []
   private let result: Result<[String], any Error>
 
   init(result: Result<[String], any Error> = .success(["installed"])) { self.result = result }
@@ -36,28 +36,33 @@ final class FakeHost: HostCommands, @unchecked Sendable {
     let ownerToken: String
     let request: AgentRequest
   }
-  private(set) var agents: [AgentCall] = []
+  private var agentRecords: [AgentCall] = []
 
   struct UninstallCall: Equatable {
     let home: String?
     let deleteData: Bool
   }
-  private(set) var uninstalls: [UninstallCall] = []
+  private var uninstallRecords: [UninstallCall] = []
 
-  private(set) var recoveries: [String?] = []
+  private var recoveryRecords: [String?] = []
+
+  var installs: [String?] { lock.withLock { installRecords } }
+  var agents: [AgentCall] { lock.withLock { agentRecords } }
+  var uninstalls: [UninstallCall] { lock.withLock { uninstallRecords } }
+  var recoveries: [String?] { lock.withLock { recoveryRecords } }
 
   func recoverOwner(home: String?) throws -> [String] {
-    lock.withLock { recoveries.append(home) }
+    lock.withLock { recoveryRecords.append(home) }
     return try result.get()
   }
 
   func uninstall(home: String?, deleteData: Bool) throws -> [String] {
-    lock.withLock { uninstalls.append(UninstallCall(home: home, deleteData: deleteData)) }
+    lock.withLock { uninstallRecords.append(UninstallCall(home: home, deleteData: deleteData)) }
     return try result.get()
   }
 
   func install(home: String?) throws -> [String] {
-    lock.withLock { installs.append(home) }
+    lock.withLock { installRecords.append(home) }
     return try result.get()
   }
 
@@ -65,7 +70,7 @@ final class FakeHost: HostCommands, @unchecked Sendable {
     throws -> [String]
   {
     lock.withLock {
-      agents.append(
+      agentRecords.append(
         AgentCall(store: storeFolder, home: home, ownerToken: ownerToken, request: request))
     }
     return try result.get()

@@ -28,27 +28,30 @@ final class TemporaryHome {
 /// Remembers what was asked of launchd and what the host looked like at that moment.
 final class RecordingLaunchd: LaunchdControl, @unchecked Sendable {
   private let lock = NSLock()
-  private(set) var calls: [String] = []
-  private(set) var loaded = false
+  private var recorded: [String] = []
+  private var isLoadedFlag = false
   private let observe: @Sendable () -> String
+
+  var calls: [String] { lock.withLock { recorded } }
+  var loaded: Bool { lock.withLock { isLoadedFlag } }
 
   init(observe: @escaping @Sendable () -> String = { "" }) { self.observe = observe }
 
   func isLoaded(label: String, userID: UInt32) throws -> Bool {
-    lock.withLock { loaded }
+    lock.withLock { isLoadedFlag }
   }
 
   func bootstrap(plist: URL, userID: UInt32) throws {
     lock.withLock {
-      calls.append("bootstrap uid=\(userID) \(plist.lastPathComponent) \(observe())")
-      loaded = true
+      recorded.append("bootstrap uid=\(userID) \(plist.lastPathComponent) \(observe())")
+      isLoadedFlag = true
     }
   }
 
   func bootout(label: String, userID: UInt32) throws {
     lock.withLock {
-      calls.append("bootout uid=\(userID) \(label)")
-      loaded = false
+      recorded.append("bootout uid=\(userID) \(label)")
+      isLoadedFlag = false
     }
   }
 }
@@ -67,15 +70,17 @@ struct NeverReady: ServiceReadiness {
 /// A service that issues one owner credential and then refuses to issue another.
 final class FakeOwnerService: ServiceConnection, @unchecked Sendable {
   private let lock = NSLock()
-  private(set) var requests: [WireRequest] = []
+  private var recorded: [WireRequest] = []
   private let token: String
+
+  var requests: [WireRequest] { lock.withLock { recorded } }
 
   init(token: String = "owner-token-0123456789-abcdefghijklmnopqrstuvwxyz") { self.token = token }
 
   func exchange(_ request: WireRequest) throws -> WireResponse {
     let first = lock.withLock { () -> Bool in
-      requests.append(request)
-      return requests.count == 1
+      recorded.append(request)
+      return recorded.count == 1
     }
     if first { return .success(.object(["token": .string(token)])) }
     return .failure(code: .ownerRequired, message: "the owner token is required")

@@ -7,13 +7,15 @@ import Testing
 final class ScriptedPendingCount: PendingMailCounter, @unchecked Sendable {
   private let lock = NSLock()
   private var answers: [Int]
-  private(set) var asked = 0
+  private var count = 0
+
+  var asked: Int { lock.withLock { count } }
 
   init(_ answers: [Int]) { self.answers = answers }
 
   func pendingCount(database: URL) throws -> Int {
     lock.withLock {
-      asked += 1
+      count += 1
       return answers.count > 1 ? answers.removeFirst() : (answers.first ?? 0)
     }
   }

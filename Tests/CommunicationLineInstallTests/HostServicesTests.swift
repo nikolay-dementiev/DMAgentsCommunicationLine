@@ -7,9 +7,11 @@ import Testing
 /// Records the commands it is asked to run and answers from a script.
 private final class ScriptedRunner: CommandRunning, @unchecked Sendable {
   private let lock = NSLock()
-  private(set) var commands: [[String]] = []
+  private var recorded: [[String]] = []
   private let status: Int32
   private let output: String
+
+  var commands: [[String]] { lock.withLock { recorded } }
 
   init(status: Int32 = 0, output: String = "") {
     self.status = status
@@ -17,7 +19,7 @@ private final class ScriptedRunner: CommandRunning, @unchecked Sendable {
   }
 
   func run(_ executable: String, _ arguments: [String]) throws -> CommandResult {
-    lock.withLock { commands.append([executable] + arguments) }
+    lock.withLock { recorded.append([executable] + arguments) }
     return CommandResult(status: status, output: output)
   }
 }
@@ -82,6 +84,22 @@ struct SystemLaunchdTests {
   }
 }
 
+/// A descriptor written by one thread and closed by another, so every access takes the lock.
+private final class DescriptorBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var descriptor: Int32 = -1
+
+  func store(_ value: Int32) { lock.withLock { descriptor = value } }
+
+  func closeIfOpen() {
+    let open = lock.withLock { () -> Int32 in
+      defer { descriptor = -1 }
+      return descriptor
+    }
+    if open >= 0 { close(open) }
+  }
+}
+
 struct SocketReadinessTests {
   private func listen(at path: String) throws -> Int32 {
     let descriptor = try UnixSocket.makeStreamSocket()
@@ -114,11 +132,11 @@ struct SocketReadinessTests {
   @Test func test_aSocketThatAppearsLate_isWaitedFor() throws {
     let home = try TemporaryHome()
     let socket = home.url.appendingPathComponent("late.sock")
-    nonisolated(unsafe) var listener: Int32 = -1
+    let listener = DescriptorBox()
     DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-      listener = (try? self.listen(at: socket.path)) ?? -1
+      listener.store((try? self.listen(at: socket.path)) ?? -1)
     }
-    defer { if listener >= 0 { close(listener) } }
+    defer { listener.closeIfOpen() }
 
     try SocketReadiness(interval: 0.01).waitUntilAnswering(socket: socket, within: 3)
   }

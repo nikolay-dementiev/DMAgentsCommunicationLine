@@ -10,7 +10,9 @@ final class ProcessLaunchd: LaunchdControl, @unchecked Sendable {
   private let startsService: Bool
   private var loaded = false
   private var child: Child?
-  private(set) var calls: [String] = []
+  private var recorded: [String] = []
+
+  var calls: [String] { lock.withLock { recorded } }
 
   init(startsService: Bool = true) { self.startsService = startsService }
 
@@ -19,9 +21,11 @@ final class ProcessLaunchd: LaunchdControl, @unchecked Sendable {
   func isLoaded(label: String, userID: UInt32) throws -> Bool { lock.withLock { loaded } }
 
   func bootstrap(plist: URL, userID: UInt32) throws {
+    // A second bootstrap without a bootout would otherwise leave the first child running.
+    stop()
     lock.lock()
     defer { lock.unlock() }
-    calls.append("bootstrap")
+    recorded.append("bootstrap")
     loaded = true
     guard startsService else { return }
     let contents = try PropertyListSerialization.propertyList(
@@ -34,7 +38,7 @@ final class ProcessLaunchd: LaunchdControl, @unchecked Sendable {
 
   func bootout(label: String, userID: UInt32) throws {
     lock.withLock {
-      calls.append("bootout")
+      recorded.append("bootout")
       loaded = false
     }
     stop()
