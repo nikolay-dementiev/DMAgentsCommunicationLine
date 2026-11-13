@@ -21,6 +21,8 @@ public enum CommandExitStatus: Int32, Sendable, CaseIterable {
   case timedOut = 9
   /// The token could not be read from the file or from standard input.
   case tokenInput = 10
+  /// `wait --until-mail` found no store folder: commline is not installed here, or was removed.
+  case notInstalled = 11
 
   /// The status of a failure of the given class. Never `success`.
   public init(failureClass: WireErrorClass) {

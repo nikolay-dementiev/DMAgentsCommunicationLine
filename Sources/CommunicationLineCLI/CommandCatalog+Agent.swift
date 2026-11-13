@@ -44,9 +44,12 @@ extension CommandCatalog {
       arguments: { _, positionals in ["id": .string(positionals[0])] }),
     Command(
       words: ["wait"], operation: "wait", needsToken: true, positionals: [],
-      options: ["timeout"], presentation: .outcome,
+      options: ["timeout", "until-mail"], presentation: .outcome,
       arguments: { invocation, _ in
         guard let timeout = invocation.single("timeout") else { return [:] }
+        if invocation.flags.contains("until-mail") {
+          throw UsageError("--until-mail has no time limit, so it takes no --timeout")
+        }
         return ["timeout": .integer(try integer(timeout, "--timeout"))]
       }),
   ]

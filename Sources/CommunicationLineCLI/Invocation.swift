@@ -13,7 +13,7 @@ struct Invocation: Sendable {
     "family", "role", "name", "reader-principal", "reader-family", "target-principal",
     "target-family", "expires-at-ms", "scope", "home", "client",
   ]
-  static let flagOptions: Set<String> = ["json", "target-global"]
+  static let flagOptions: Set<String> = ["json", "target-global", "until-mail"]
 
   private(set) var words: [String] = []
   private(set) var values: [String: [String]] = [:]

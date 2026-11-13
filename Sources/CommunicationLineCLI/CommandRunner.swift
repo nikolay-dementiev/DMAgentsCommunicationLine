@@ -12,14 +12,16 @@ public struct CommandRunner {
   private let standardError: (String) -> Void
   private let encode: (WireValue) throws -> Data
   private let host: any HostCommands
+  private let environment: RunnerEnvironment
 
   public init(
     connect: @escaping (String) -> any ServiceConnection, tokenReader: TokenReader,
     standardOutput: @escaping (String) -> Void, standardError: @escaping (String) -> Void,
-    host: any HostCommands,
+    host: any HostCommands, environment: RunnerEnvironment = .system,
     encode: @escaping (WireValue) throws -> Data = { try WireCoding.encode($0) }
   ) {
     self.host = host
+    self.environment = environment
     self.encode = encode
     self.connect = connect
     self.tokenReader = tokenReader
@@ -36,6 +38,9 @@ public struct CommandRunner {
       let arguments = try command.arguments(invocation, positionals)
       let token = try command.needsToken ? readToken(invocation) : nil
       let request = WireRequest(token: token, operation: command.operation, arguments: arguments)
+      if command.words == ["wait"], invocation.flags.contains("until-mail") {
+        return waitUntilMail(request, socket: socket)
+      }
       return perform(
         request, command: command, asJSON: invocation.flags.contains("json"), socket: socket)
     } catch let error as UsageError {
@@ -110,6 +115,45 @@ public struct CommandRunner {
         family: try CommandCatalog.required(invocation, "family"), role: role,
         name: try CommandCatalog.required(invocation, "name"), client: client)
     )
+  }
+
+  // MARK: - Waiter
+
+  /// How long the waiter pauses before it tries the service again.
+  private static let reconnectPause: TimeInterval = 1
+
+  /// Repeats `wait` until mail is waiting. A timeout only starts the next cycle; a service that is
+  /// restarting is tried again; a refusal ends the wait, and so does a store folder that is gone.
+  private func waitUntilMail(_ request: WireRequest, socket: String) -> Int32 {
+    let folder = (socket as NSString).deletingLastPathComponent
+    while true {
+      do {
+        let response = try connect(socket).exchange(request)
+        if let failure = response.failure {
+          standardError("commline: \(failure.code.rawValue): \(failure.message)")
+          return CommandExitStatus(failureClass: failure.code.errorClass).rawValue
+        }
+        if case .object(let fields)? = response.result, fields["outcome"] == .string("mail") {
+          standardOutput("mail")
+          return CommandExitStatus.success.rawValue
+        }
+      } catch ServiceConnectionError.unreachable(let reason) {
+        guard environment.directoryExists(folder) else { return notInstalled(folder) }
+        standardError("commline: the service is not reachable, trying again: \(reason)")
+        environment.pause(Self.reconnectPause)
+      } catch ServiceConnectionError.invalidResponse {
+        guard environment.directoryExists(folder) else { return notInstalled(folder) }
+        environment.pause(Self.reconnectPause)
+      } catch {
+        standardError("commline: \(error)")
+        return CommandExitStatus.failure.rawValue
+      }
+    }
+  }
+
+  private func notInstalled(_ folder: String) -> Int32 {
+    standardError("commline: not installed here: the store folder \(folder) does not exist")
+    return CommandExitStatus.notInstalled.rawValue
   }
 
   // MARK: - Steps
