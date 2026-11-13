@@ -63,7 +63,8 @@ public final class ServiceRuntime {
     let messages = MessageService(
       store: SQLiteMessageStore(store: store), rights: SQLiteRightsStore(store: store),
       authenticator: identity, settings: settings, identifiers: UUIDIdentifierSource(),
-      clock: clock, arrival: arrival)
+      clock: clock, arrival: arrival,
+      waitQuota: WaitQuota())
     let frameMaximum = try frameMaximum(catalog: catalog, store: settingsStore)
     let activity = ActivityService(
       store: SQLiteActivityStore(store: store), identity: identity, settings: settings,

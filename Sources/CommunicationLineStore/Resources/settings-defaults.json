@@ -118,6 +118,24 @@
       "description": "The most pending deliveries one principal may have. A send that would pass it is refused; nothing is deleted to make room."
     },
     {
+      "key": "limits.waits.global",
+      "type": "integer",
+      "unit": "waits",
+      "default": 128,
+      "range": { "min": 0, "max": 4096 },
+      "scopes": ["global"],
+      "description": "The most waits the service keeps parked at once. Zero admits none."
+    },
+    {
+      "key": "limits.waits.principal",
+      "type": "integer",
+      "unit": "waits",
+      "default": 2,
+      "range": { "min": 0, "max": 64 },
+      "scopes": ["global"],
+      "description": "The most waits one principal may keep parked at once. Zero admits none."
+    },
+    {
       "key": "service.frame_max",
       "type": "bytes",
       "unit": "bytes",
