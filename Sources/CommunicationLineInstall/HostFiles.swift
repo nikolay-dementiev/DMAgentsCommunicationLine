@@ -19,8 +19,14 @@ enum HostFiles {
       url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, mode)
     guard descriptor >= 0 else { throw HostFileError.system("create \(url.path)", errno) }
     defer { close(descriptor) }
-    guard fchmod(descriptor, mode) == 0 else { throw HostFileError.system("chmod", errno) }
-    try writeAll(data, to: descriptor, path: url.path)
+    do {
+      guard fchmod(descriptor, mode) == 0 else { throw HostFileError.system("chmod", errno) }
+      try writeAll(data, to: descriptor, path: url.path)
+    } catch {
+      // A half-written file would be taken for a finished one by the next run.
+      unlink(url.path)
+      throw error
+    }
   }
 
   /// Replaces the file at `url` in one step: the new contents are written next to it and renamed
@@ -57,8 +63,9 @@ enum HostFiles {
   private static func writeAll(_ data: Data, to descriptor: Int32, path: String) throws {
     var offset = 0
     try data.withUnsafeBytes { buffer in
+      guard let base = buffer.baseAddress else { return }
       while offset < buffer.count {
-        let written = write(descriptor, buffer.baseAddress! + offset, buffer.count - offset)
+        let written = write(descriptor, base + offset, buffer.count - offset)
         if written < 0 {
           if errno == EINTR { continue }
           throw HostFileError.system("write \(path)", errno)

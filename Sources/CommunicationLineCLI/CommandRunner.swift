@@ -117,12 +117,15 @@ public struct CommandRunner {
       }
       client = known
     }
-    return (
-      store,
-      AgentRequest(
-        family: try CommandCatalog.required(invocation, "family"), role: role,
-        name: try CommandCatalog.required(invocation, "name"), client: client)
-    )
+    let family = try CommandCatalog.required(invocation, "family")
+    let name = try CommandCatalog.required(invocation, "name")
+    for (option, value) in [("family", family), ("name", name)]
+    where value.unicodeScalars.contains(where: { $0.properties.generalCategory == .control })
+      || value.contains("`")
+    {
+      throw UsageError("--\(option) must not contain control characters or backticks")
+    }
+    return (store, AgentRequest(family: family, role: role, name: name, client: client))
   }
 
   // MARK: - Waiter
@@ -145,6 +148,11 @@ public struct CommandRunner {
           standardOutput("mail")
           return CommandExitStatus.success.rawValue
         }
+        if case .object(let fields)? = response.result, fields["outcome"] == .string("timeout") {
+          continue
+        }
+        // An answer that is neither: do not spin on it.
+        environment.pause(Self.reconnectPause)
       } catch ServiceConnectionError.unreachable(let reason) {
         guard environment.directoryExists(folder) else { return notInstalled(folder) }
         standardError("commline: the service is not reachable, trying again: \(reason)")

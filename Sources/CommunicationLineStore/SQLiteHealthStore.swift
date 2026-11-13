@@ -10,6 +10,17 @@ public final class SQLiteHealthStore: HealthStore {
     self.store = store
   }
 
+  /// Every pending delivery, counted without any other table: a safety check such as the one
+  /// before deleting the data must not depend on the rows of principals.
+  public func totalPending() throws -> Int {
+    guard
+      case .integer(let count)? = try store.database.rows(
+        "SELECT COUNT(*) FROM deliveries WHERE state = 'pending'"
+      ).first?[0], let total = Int(exactly: count)
+    else { throw StoreError.invalidStoredIdentity("pending total") }
+    return total
+  }
+
   public func pendingRecipients() throws -> [PendingRecipient] {
     try store.database.rows(
       """
