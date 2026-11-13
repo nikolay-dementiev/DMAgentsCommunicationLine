@@ -36,11 +36,17 @@ public struct ActivityService {
   }
 
   /// Who a token belongs to. A missing, unknown, revoked or disabled one is `unauthenticated`.
-  public func actor(for token: CredentialToken?) -> ActivityActor {
-    guard let token, let actor = try? identity.authenticate(token) else { return .unauthenticated }
-    switch actor {
-    case .owner: return .owner
-    case .principal(let principal): return .principal(principal.id)
+  /// A storage failure is not a refusal: it is thrown, so a broken store is never logged as an
+  /// anonymous caller.
+  public func actor(for token: CredentialToken?) throws -> ActivityActor {
+    guard let token else { return .unauthenticated }
+    do {
+      switch try identity.authenticate(token) {
+      case .owner: return .owner
+      case .principal(let principal): return .principal(principal.id)
+      }
+    } catch IdentityError.unknownToken, IdentityError.tokenRevoked, IdentityError.principalDisabled {
+      return .unauthenticated
     }
   }
 

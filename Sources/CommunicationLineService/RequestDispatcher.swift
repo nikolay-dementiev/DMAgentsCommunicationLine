@@ -69,12 +69,12 @@ public struct RequestDispatcher: @unchecked Sendable {
       }
       let result: WireValue
       if operation == .wait {
-        let actor = activity.actor(for: try? optionalToken(of: request))
+        let actor = try actor(of: request)
         result = try perform(operation, request: request, arguments: arguments)
         try activity.record(actor: actor, operation: name, outcome: "ok", targets: [])
       } else {
         result = try transactions.atomically {
-          let actor = activity.actor(for: try? optionalToken(of: request))
+          let actor = try actor(of: request)
           let value = try perform(operation, request: request, arguments: arguments)
           try activity.record(
             actor: actor, operation: name, outcome: "ok",
@@ -94,10 +94,20 @@ public struct RequestDispatcher: @unchecked Sendable {
   private func recordFailure(of request: WireRequest, as name: String, response: WireResponse) {
     do {
       try activity.record(
-        actor: activity.actor(for: try? optionalToken(of: request)), operation: name,
+        actor: try actor(of: request), operation: name,
         outcome: response.failure?.code.rawValue ?? "internal", targets: [])
     } catch {
       reporter.report(error, operation: "record activity")
+    }
+  }
+
+  /// A token that cannot even be decoded counts as unauthenticated, like an unknown one; a storage
+  /// failure is thrown.
+  private func actor(of request: WireRequest) throws -> ActivityActor {
+    do {
+      return try activity.actor(for: try optionalToken(of: request))
+    } catch IdentityError.unknownToken {
+      return .unauthenticated
     }
   }
 
