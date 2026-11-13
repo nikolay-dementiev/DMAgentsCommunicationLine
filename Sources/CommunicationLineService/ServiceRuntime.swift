@@ -21,13 +21,18 @@ public final class ServiceRuntime {
   public let dispatcher: RequestDispatcher
   /// The largest frame the service reads or writes, from the `service.frame_max` setting at start.
   public let frameMaximum: Int
+  /// How often the service runs cleanup, from the `cleanup.interval` setting at start.
+  public let cleanupInterval: TimeInterval
+  public let cleanup: CleanupRunner
   private let store: SQLiteStore
   private let arrival: InProcessMailArrival
 
   private init(
-    dispatcher: RequestDispatcher, frameMaximum: Int, store: SQLiteStore,
-    arrival: InProcessMailArrival
+    dispatcher: RequestDispatcher, frameMaximum: Int, cleanupInterval: TimeInterval,
+    cleanup: CleanupRunner, store: SQLiteStore, arrival: InProcessMailArrival
   ) {
+    self.cleanupInterval = cleanupInterval
+    self.cleanup = cleanup
     self.arrival = arrival
     self.dispatcher = dispatcher
     self.frameMaximum = frameMaximum
@@ -36,14 +41,15 @@ public final class ServiceRuntime {
 
   /// Opens (or creates) the store in `storeFolder` and wires the services onto it.
   public static func open(
-    storeFolder: URL, reporter: any FailureReporter = StandardErrorReporter()
+    storeFolder: URL, clock: (any WallClock)? = nil,
+    reporter: any FailureReporter = StandardErrorReporter()
   ) throws -> ServiceRuntime {
     let catalog = try BundledSettingsCatalogSource.shipped.load()
     let busyTimeout = try integerDefault(of: "store.busy_timeout", in: catalog)
     let store = try SQLiteStore.open(
       at: storeFolder.appendingPathComponent(databaseName),
       busyTimeoutMilliseconds: Int(busyTimeout), migrations: SchemaMigrations.all)
-    let clock = SystemWallClock()
+    let clock: any WallClock = clock ?? SystemWallClock()
     let identity = IdentityService(
       store: SQLiteIdentityStore(store: store), random: SecureRandomSource(),
       identifiers: UUIDIdentifierSource(), clock: clock)
@@ -62,12 +68,19 @@ public final class ServiceRuntime {
     let activity = ActivityService(
       store: SQLiteActivityStore(store: store), identity: identity, settings: settings,
       clock: clock)
+    let transactions = SQLiteTransactionRunner(store: store)
+    let cleanup = CleanupRunner(
+      service: CleanupService(
+        store: SQLiteRetentionStore(store: store), settings: settings, transactions: transactions,
+        clock: clock),
+      clock: clock)
     let dispatcher = RequestDispatcher(
       identity: identity, rights: rights, settings: settings, messages: messages,
-      activity: activity, transactions: SQLiteTransactionRunner(store: store),
-      reporter: reporter)
+      activity: activity, cleanup: cleanup, transactions: transactions, reporter: reporter)
     return ServiceRuntime(
-      dispatcher: dispatcher, frameMaximum: frameMaximum, store: store, arrival: arrival)
+      dispatcher: dispatcher, frameMaximum: frameMaximum,
+      cleanupInterval: try cleanupInterval(settings), cleanup: cleanup, store: store,
+      arrival: arrival)
   }
 
   /// Answers every parked `wait` now, as if its time had run out.
@@ -78,6 +91,13 @@ public final class ServiceRuntime {
   /// Closes the database. The dispatcher answers `internal` to anything that arrives later.
   public func close() {
     store.close()
+  }
+
+  private static func cleanupInterval(_ settings: SettingsService) throws -> TimeInterval {
+    guard case .integer(let seconds) = try settings.serviceValue(of: "cleanup.interval"),
+      seconds >= 1
+    else { throw ServiceRuntimeError.missingSetting("cleanup.interval") }
+    return TimeInterval(seconds)
   }
 
   private static func integerDefault(of key: String, in catalog: SettingsCatalog) throws -> Int64 {

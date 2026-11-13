@@ -12,6 +12,16 @@ extension RequestDispatcher {
     return .object(fields)
   }
 
+  func performCleanup(token: CredentialToken) throws -> WireValue {
+    try identity.authenticateOwner(token)
+    let result = try cleanup.run()
+    return .object([
+      "deliveries": .integer(Int64(result.deliveries)),
+      "messages": .integer(Int64(result.messages)),
+      "activity": .integer(Int64(result.activity)),
+    ])
+  }
+
   /// The ids a request touched. Only ids, names of rules and keys: never a subject, a body or a
   /// token.
   func activityTargets(_ operation: Operation, arguments: Arguments, result: WireValue?) -> [String]

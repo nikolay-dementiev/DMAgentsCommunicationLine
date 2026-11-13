@@ -1,3 +1,4 @@
+import CommunicationLineDomain
 import CommunicationLineStore
 import CommunicationLineWire
 import Darwin
@@ -26,6 +27,7 @@ public final class ServiceHost: @unchecked Sendable {
   private let peerReader: any PeerCredentialReader
   private let requestTimeout: TimeInterval
   private let reporter: any FailureReporter
+  private let cleanupInterval: TimeInterval
   private let state = NSCondition()
   private var isStopped = false
   private var isFinished = false
@@ -34,8 +36,9 @@ public final class ServiceHost: @unchecked Sendable {
   private init(
     runtime: ServiceRuntime, lock: InstanceLock, listener: Int32, socketPath: String,
     peerReader: any PeerCredentialReader, requestTimeout: TimeInterval,
-    reporter: any FailureReporter
+    reporter: any FailureReporter, cleanupInterval: TimeInterval
   ) {
+    self.cleanupInterval = cleanupInterval
     self.runtime = runtime
     self.lock = lock
     self.listener = listener
@@ -50,18 +53,22 @@ public final class ServiceHost: @unchecked Sendable {
   public static func start(
     storeFolder: URL, peerReader: any PeerCredentialReader = SystemPeerCredentialReader(),
     requestTimeout: TimeInterval = 10, reporter: any FailureReporter = StandardErrorReporter(),
-    userID: UInt32 = UInt32(geteuid())
+    userID: UInt32 = UInt32(geteuid()), clock: (any WallClock)? = nil,
+    cleanupInterval: TimeInterval? = nil
   ) throws -> ServiceHost {
     try StoreFolder.prepare(storeFolder, waitingUpTo: 5000)
     let lock = try InstanceLock(path: storeFolder.appendingPathComponent(lockName).path)
-    let runtime = try ServiceRuntime.open(storeFolder: storeFolder, reporter: reporter)
+    let runtime = try ServiceRuntime.open(
+      storeFolder: storeFolder, clock: clock, reporter: reporter)
     let path = storeFolder.appendingPathComponent(socketName).path
     try removeStaleSocket(at: path, ownedBy: userID)
     let listener = try listen(at: path)
     let host = ServiceHost(
       runtime: runtime, lock: lock, listener: listener, socketPath: path, peerReader: peerReader,
-      requestTimeout: requestTimeout, reporter: reporter)
+      requestTimeout: requestTimeout, reporter: reporter,
+      cleanupInterval: cleanupInterval ?? runtime.cleanupInterval)
     Thread.detachNewThread { host.acceptLoop() }
+    Thread.detachNewThread { host.cleanupLoop() }
     return host
   }
 
@@ -76,6 +83,7 @@ public final class ServiceHost: @unchecked Sendable {
       return
     }
     isStopped = true
+    state.broadcast()
     state.unlock()
     unlink(socketPath)
     runtime.cancelWaits()
@@ -96,7 +104,9 @@ public final class ServiceHost: @unchecked Sendable {
   /// Waits, with the state lock held, until the accept loop and all connections are gone.
   private func awaitIdle(for seconds: TimeInterval) {
     let deadline = Date().addingTimeInterval(seconds)
-    while (!acceptLoopEnded || !activeConnections.isEmpty) && state.wait(until: deadline) {}
+    while (!acceptLoopEnded || !cleanupLoopEnded || !activeConnections.isEmpty)
+      && state.wait(until: deadline)
+    {}
   }
 
   /// Blocks until ``stop()`` has finished: the store is closed and the instance lock released.
@@ -175,6 +185,28 @@ public final class ServiceHost: @unchecked Sendable {
       state.unlock()
       Thread.detachNewThread { self.serve(connection) }
     }
+  }
+
+  private var cleanupLoopEnded = false
+
+  /// Runs cleanup every `cleanupInterval` until the host stops. A failed run is reported and the
+  /// next one is still attempted.
+  private func cleanupLoop() {
+    state.lock()
+    while !isStopped {
+      state.wait(until: Date().addingTimeInterval(cleanupInterval))
+      if isStopped { break }
+      state.unlock()
+      do {
+        try runtime.cleanup.run()
+      } catch {
+        reporter.report(error, operation: "scheduled cleanup")
+      }
+      state.lock()
+    }
+    cleanupLoopEnded = true
+    state.broadcast()
+    state.unlock()
   }
 
   private func serve(_ descriptor: Int32) {

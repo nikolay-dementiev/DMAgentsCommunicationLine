@@ -24,6 +24,24 @@ public protocol RetentionStore {
   func deleteActivity(before cutoff: Date) throws -> Int
 }
 
+/// What the most recent cleanup run did, for the health report.
+public struct CleanupReport: Equatable, Sendable {
+  public let at: Date
+  /// The deletions, or the reason the run failed.
+  public let outcome: Result<CleanupResult, CleanupFailure>
+
+  public init(at: Date, outcome: Result<CleanupResult, CleanupFailure>) {
+    self.at = at
+    self.outcome = outcome
+  }
+}
+
+public struct CleanupFailure: Error, Equatable, Sendable {
+  public let description: String
+
+  public init(description: String) { self.description = description }
+}
+
 public enum CleanupError: Error, Equatable {
   case invalidSetting(String)
 }

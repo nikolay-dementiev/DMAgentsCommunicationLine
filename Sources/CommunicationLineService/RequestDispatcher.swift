@@ -20,6 +20,7 @@ enum Operation: String {
   case settingGet = "setting.get"
   case settingSet = "setting.set"
   case activityList = "activity.list"
+  case healthCleanup = "health.cleanup"
 }
 
 /// Serves one request at a time against the services. It never throws: every failure is a typed
@@ -32,19 +33,21 @@ public struct RequestDispatcher: @unchecked Sendable {
   let settings: SettingsService
   let messages: MessageService
   let activity: ActivityService
+  let cleanup: CleanupRunner
   private let transactions: any TransactionRunner
   private let reporter: any FailureReporter
 
   init(
     identity: IdentityService, rights: RightsService, settings: SettingsService,
-    messages: MessageService, activity: ActivityService, transactions: any TransactionRunner,
-    reporter: any FailureReporter
+    messages: MessageService, activity: ActivityService, cleanup: CleanupRunner,
+    transactions: any TransactionRunner, reporter: any FailureReporter
   ) {
     self.identity = identity
     self.rights = rights
     self.settings = settings
     self.messages = messages
     self.activity = activity
+    self.cleanup = cleanup
     self.transactions = transactions
     self.reporter = reporter
   }
@@ -105,6 +108,8 @@ public struct RequestDispatcher: @unchecked Sendable {
       return try issueOwnerCredential(replacing: try optionalToken(of: request))
     case .activityList:
       return try performActivity(token: try token(of: request), arguments: arguments)
+    case .healthCleanup:
+      return try performCleanup(token: try token(of: request))
     default:
       return try performOwner(operation, token: try token(of: request), arguments: arguments)
     }
