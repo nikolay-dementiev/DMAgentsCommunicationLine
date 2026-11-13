@@ -33,10 +33,11 @@ public struct StorageService {
 
   public func status() throws -> StorageStatus {
     let used = try store.usedBytes()
-    guard case .integer(let budget) = try settings.serviceValue(of: "storage.budget"), budget >= 1,
-      case .integer(let percent) = try settings.serviceValue(of: "storage.warning_percent"),
-      let warningPercent = Int(exactly: percent), warningPercent >= 1
+    guard case .integer(let budget) = try settings.serviceValue(of: "storage.budget"), budget >= 1
     else { throw CleanupError.invalidSetting("storage.budget") }
+    guard case .integer(let percent) = try settings.serviceValue(of: "storage.warning_percent"),
+      let warningPercent = Int(exactly: percent), warningPercent >= 1
+    else { throw CleanupError.invalidSetting("storage.warning_percent") }
     // Products beyond Int64 are far past any real file: a huge use warns, a huge budget does not.
     let (usedScaled, usedOverflow) = used.multipliedReportingOverflow(by: 100)
     let (budgetScaled, budgetOverflow) = budget.multipliedReportingOverflow(

@@ -23,7 +23,14 @@ public enum ErrorMapping {
     case let error as MessagingError: return messaging(error)
     case let error as MessageError: return message(error)
     case let error as SettingsServiceError: return settings(error)
+    case let error as CleanupError: return cleanup(error)
     default: return nil
+    }
+  }
+
+  private static func cleanup(_ error: CleanupError) -> (WireErrorCode, String) {
+    switch error {
+    case .invalidSetting(let key): return (.invalidSetting, "the setting \(key) is not usable")
     }
   }
 
