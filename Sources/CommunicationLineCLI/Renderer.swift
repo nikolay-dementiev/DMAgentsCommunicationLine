@@ -3,18 +3,21 @@ import Foundation
 
 /// Turns an answer into the text a person or a script reads.
 enum Renderer {
-  static func json(_ value: WireValue) -> String {
-    guard let data = try? WireCoding.encode(value) else { return "null" }
-    return String(decoding: data, as: UTF8.self)
+  /// The exact JSON of a result. An encoding failure is thrown, never printed as `null`.
+  static func json(_ value: WireValue, encode: (WireValue) throws -> Data) throws -> String {
+    String(decoding: try encode(value), as: UTF8.self)
   }
 
-  static func failureJSON(_ failure: WireFailure) -> String {
+  /// The JSON of a failure for standard error. When even that cannot be encoded the plain text
+  /// form is used, so the failure is never lost.
+  static func failureJSON(_ failure: WireFailure, encode: (WireValue) throws -> Data) -> String {
     let body = WireValue.object([
       "error": .object([
         "code": .string(failure.code.rawValue), "message": .string(failure.message),
       ])
     ])
-    return json(body)
+    return (try? json(body, encode: encode))
+      ?? "commline: \(failure.code.rawValue): \(failure.message)"
   }
 
   /// The lines to print for a successful result.

@@ -9,11 +9,14 @@ public struct CommandRunner {
   private let tokenReader: TokenReader
   private let standardOutput: (String) -> Void
   private let standardError: (String) -> Void
+  private let encode: (WireValue) throws -> Data
 
   public init(
     connect: @escaping (String) -> any ServiceConnection, tokenReader: TokenReader,
-    standardOutput: @escaping (String) -> Void, standardError: @escaping (String) -> Void
+    standardOutput: @escaping (String) -> Void, standardError: @escaping (String) -> Void,
+    encode: @escaping (WireValue) throws -> Data = { try WireCoding.encode($0) }
   ) {
+    self.encode = encode
     self.connect = connect
     self.tokenReader = tokenReader
     self.standardOutput = standardOutput
@@ -93,13 +96,19 @@ public struct CommandRunner {
     if let failure = response.failure {
       standardError(
         asJSON
-          ? Renderer.failureJSON(failure) : "commline: \(failure.code.rawValue): \(failure.message)"
+          ? Renderer.failureJSON(failure, encode: encode)
+          : "commline: \(failure.code.rawValue): \(failure.message)"
       )
       return CommandExitStatus(failureClass: failure.code.errorClass).rawValue
     }
     let result = response.result ?? .object([:])
     if asJSON {
-      standardOutput(Renderer.json(result))
+      do {
+        standardOutput(try Renderer.json(result, encode: encode))
+      } catch {
+        standardError("commline: cannot encode the answer: \(error)")
+        return CommandExitStatus.failure.rawValue
+      }
     } else {
       Renderer.text(result, as: command.presentation).forEach(standardOutput)
     }
