@@ -62,6 +62,38 @@ import Testing
     #expect(try fixture.world.count("messages") == 0, "the message without deliveries is gone")
   }
 
+  @Test func test_acknowledgedMail_atExactlyTheRetentionAge_isKept_andOneMillisecondLaterIsDeleted()
+    throws
+  {
+    let fixture = try Fixture()
+    _ = try fixture.mail(acknowledged: true)
+    fixture.advance(days: 90)
+
+    let onTheDay = try fixture.cleanup.run()
+    fixture.advance(days: 0.001 / 86_400)
+    let afterIt = try fixture.cleanup.run()
+
+    #expect(onTheDay.deliveries == 0, "exactly 90 days old is not older than 90 days")
+    #expect(afterIt.deliveries == 1, "one millisecond past the window it is due")
+  }
+
+  @Test func test_activity_atExactlyTheRetentionAge_isKept_andOneMillisecondLaterIsDeleted() throws
+  {
+    let fixture = try Fixture()
+    let now = fixture.world.clock.instant
+    try fixture.activity.append(
+      NewActivity(
+        at: now.addingTimeInterval(-90 * 86_400), actor: .owner, operation: "edge",
+        outcome: "ok", targets: []))
+
+    let onTheDay = try fixture.cleanup.run()
+    fixture.advance(days: 0.001 / 86_400)
+    let afterIt = try fixture.cleanup.run()
+
+    #expect(onTheDay.activity == 0, "exactly 90 days old is kept")
+    #expect(afterIt.activity == 1, "one millisecond later it is deleted")
+  }
+
   @Test func test_pendingMail_isNeverDeleted_howeverOldItIs() throws {
     let fixture = try Fixture()
     _ = try fixture.mail(acknowledged: false)
