@@ -6,6 +6,16 @@ database instead of Markdown mailbox files.
 Status: pre-release. This package currently holds the layered skeleton, the SQLite store with numbered
 migrations and safe file permissions, and the typed settings catalog with audited changes.
 
+## Quick start
+
+```
+swift build -c release
+.build/release/commline install
+```
+
+Then add an agent with `commline agent add`. The steps, the files they write and how to upgrade or uninstall are in
+[docs/install.md](docs/install.md); what 0.1.0 does and its limits are in [docs/release-notes-0.1.md](docs/release-notes-0.1.md).
+
 ## Layout
 
 | Module | Role |
@@ -25,6 +35,10 @@ entry point.
 - [Messaging](docs/messaging.md)
 - [Service and socket protocol](docs/service.md)
 - [The `commline` command](docs/cli.md)
+- [Install, upgrade, uninstall](docs/install.md)
+- [Agents](docs/agents.md)
+- [Acceptance](docs/acceptance.md)
+- [Release notes 0.1.0](docs/release-notes-0.1.md)
 
 ## Build and test
 
