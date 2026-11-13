@@ -12,9 +12,13 @@ extension RequestDispatcher {
     return .object(fields)
   }
 
-  func performCleanup(token: CredentialToken) throws -> WireValue {
+  /// The cleanup runs inside the transaction of this request, so it is remembered as the last
+  /// cleanup only after that transaction commits.
+  func performCleanup(token: CredentialToken, afterCommit: AfterCommit) throws -> WireValue {
     try identity.authenticateOwner(token)
-    let result = try cleanup.run()
+    let attempt = try cleanup.attempt()
+    afterCommit.add { cleanup.remember(attempt) }
+    let result = attempt.result
     return .object([
       "deliveries": .integer(Int64(result.deliveries)),
       "messages": .integer(Int64(result.messages)),

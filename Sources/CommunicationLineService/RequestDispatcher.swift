@@ -68,20 +68,24 @@ public struct RequestDispatcher: @unchecked Sendable {
         throw RequestError.badRequest("unknown operation \(request.operation)")
       }
       let result: WireValue
+      let afterCommit = AfterCommit()
       if operation == .wait {
         let actor = try actor(of: request)
-        result = try perform(operation, request: request, arguments: arguments)
+        result = try perform(
+          operation, request: request, arguments: arguments, afterCommit: afterCommit)
         try activity.record(actor: actor, operation: name, outcome: "ok", targets: [])
       } else {
         result = try transactions.atomically {
           let actor = try actor(of: request)
-          let value = try perform(operation, request: request, arguments: arguments)
+          let value = try perform(
+            operation, request: request, arguments: arguments, afterCommit: afterCommit)
           try activity.record(
             actor: actor, operation: name, outcome: "ok",
             targets: activityTargets(operation, arguments: arguments, result: value))
           return value
         }
       }
+      afterCommit.run()
       return .success(result)
     } catch {
       let response = ErrorMapping.response(
@@ -111,9 +115,9 @@ public struct RequestDispatcher: @unchecked Sendable {
     }
   }
 
-  private func perform(_ operation: Operation, request: WireRequest, arguments: Arguments) throws
-    -> WireValue
-  {
+  private func perform(
+    _ operation: Operation, request: WireRequest, arguments: Arguments, afterCommit: AfterCommit
+  ) throws -> WireValue {
     switch operation {
     case .send, .inbox, .read, .acknowledge, .wait:
       return try performAgent(operation, token: try token(of: request), arguments: arguments)
@@ -124,7 +128,7 @@ public struct RequestDispatcher: @unchecked Sendable {
     case .health:
       return WireMapping.health(try health.report(ownerToken: try token(of: request)))
     case .healthCleanup:
-      return try performCleanup(token: try token(of: request))
+      return try performCleanup(token: try token(of: request), afterCommit: afterCommit)
     default:
       return try performOwner(operation, token: try token(of: request), arguments: arguments)
     }
@@ -140,5 +144,18 @@ public struct RequestDispatcher: @unchecked Sendable {
     guard let text = request.token, !text.isEmpty else { return nil }
     guard let token = CredentialToken(encoded: text) else { throw IdentityError.unknownToken }
     return token
+  }
+}
+
+/// Work that must happen only once the transaction of a request has committed.
+final class AfterCommit {
+  private var actions: [() -> Void] = []
+
+  func add(_ action: @escaping () -> Void) { actions.append(action) }
+
+  func run() {
+    let pending = actions
+    actions = []
+    pending.forEach { $0() }
   }
 }
