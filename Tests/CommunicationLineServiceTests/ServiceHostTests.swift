@@ -213,4 +213,79 @@ struct ServiceHostTests {
     let after = (try? FileManager.default.attributesOfItem(atPath: log)[.size] as? Int) ?? 0
     #expect(after == 0, "stopping closes the database, which empties the log")
   }
+
+  @Test func test_waitUntilStopped_returnsOnlyAfterTheStopHasFinished() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(storeFolder: folder)
+    let log = folder.appendingPathComponent(ServiceRuntime.databaseName + "-wal").path
+    _ = try ask(host, WireRequest(token: nil, operation: "owner.credential"))
+    Thread.detachNewThread {
+      Thread.sleep(forTimeInterval: 0.2)
+      host.stop()
+    }
+
+    host.waitUntilStopped()
+
+    let size = (try? FileManager.default.attributesOfItem(atPath: log)[.size] as? Int) ?? 0
+    #expect(size == 0, "the database is already closed when the wait returns")
+    #expect(throws: Never.self, "the instance lock is already released when the wait returns") {
+      try ServiceHost.start(storeFolder: folder).stop()
+    }
+  }
+
+  @Test func test_stop_answersAParkedWaitInsteadOfDroppingIt() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(storeFolder: folder)
+    let owner = try tokenOf(try ask(host, WireRequest(token: nil, operation: "owner.credential")))
+    let created = try ask(
+      host,
+      WireRequest(
+        token: owner, operation: "principal.create",
+        arguments: ["family": .string("f"), "role": .string("agent"), "name": .string("a")]))
+    guard case .object(let fields)? = created.result, case .string(let id)? = fields["id"] else {
+      Issue.record("principal.create gave no id")
+      return
+    }
+    let agent = try tokenOf(
+      try ask(
+        host,
+        WireRequest(
+          token: owner, operation: "credential.issue", arguments: ["principal": .string(id)])
+      ))
+    let outcome = Box<Result<WireResponse, any Error>?>(nil)
+    let done = DispatchSemaphore(value: 0)
+    Thread.detachNewThread {
+      outcome.value = Result {
+        try SocketExchange.call(
+          socketPath: host.socketPath,
+          request: WireRequest(
+            token: agent, operation: "wait", arguments: ["timeout": .integer(30)]),
+          maximumFrame: host.frameMaximum)
+      }
+      done.signal()
+    }
+    Thread.sleep(forTimeInterval: 0.5)
+
+    let started = Date()
+    host.stop()
+
+    #expect(Date().timeIntervalSince(started) < 1.5, "stopping does not sit out the grace period")
+    #expect(done.wait(timeout: .now() + 5) == .success, "the parked client got an answer")
+    #expect(
+      (try? outcome.value?.get())?.isSuccess == true,
+      "the parked client was answered, not cut off")
+  }
+
+  private func tokenOf(_ response: WireResponse) throws -> String {
+    guard case .object(let fields)? = response.result, case .string(let token)? = fields["token"]
+    else { throw POSIXError(.EINVAL) }
+    return token
+  }
+}
+
+private final class Box<Value>: @unchecked Sendable {
+  var value: Value
+  init(_ value: Value) { self.value = value }
 }
