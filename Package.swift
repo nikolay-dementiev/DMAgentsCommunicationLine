@@ -11,6 +11,7 @@ let package = Package(
     .library(name: "CommunicationLineStore", targets: ["CommunicationLineStore"]),
     .library(name: "CommunicationLineWire", targets: ["CommunicationLineWire"]),
     .library(name: "CommunicationLineService", targets: ["CommunicationLineService"]),
+    .library(name: "CommunicationLineCLI", targets: ["CommunicationLineCLI"]),
   ],
   targets: [
     .target(name: "CommunicationLineDomain"),
@@ -30,6 +31,11 @@ let package = Package(
         "CommunicationLineDomain", "CommunicationLineApplication", "CommunicationLineStore",
         "CommunicationLineWire",
       ]
+    ),
+    .target(name: "CommunicationLineCLI", dependencies: ["CommunicationLineWire"]),
+    .testTarget(
+      name: "CommunicationLineCLITests",
+      dependencies: ["CommunicationLineCLI", "CommunicationLineWire"]
     ),
     .executableTarget(
       name: "commline-service",
