@@ -97,7 +97,7 @@ public struct IdentityService: Authenticating {
     try store.disable(id, at: clock.now())
   }
 
-  /// Enables the principal again. Its old credentials stay revoked; it needs a new one.
+  /// Enables a disabled principal again. Its old credentials stay revoked; it needs a new one. Enabling an enabled principal changes nothing.
   public func enablePrincipal(_ id: PrincipalID, ownerToken: CredentialToken) throws {
     try authenticateOwner(ownerToken)
     _ = try existingPrincipal(id)

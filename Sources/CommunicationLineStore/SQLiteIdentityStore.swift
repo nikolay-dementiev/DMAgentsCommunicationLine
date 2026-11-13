@@ -40,6 +40,10 @@ public final class SQLiteIdentityStore: IdentityStore {
   public func enable(_ id: PrincipalID, at instant: Date) throws {
     let milliseconds = try StoreTime.milliseconds(of: instant)
     try store.database.transaction {
+      // Only a disabled principal is revived: enabling an enabled one must keep its live token.
+      let disabled = try store.database.rows(
+        "SELECT 1 FROM principals WHERE id = ?1 AND enabled = 0", [.text(id.rawValue)])
+      guard !disabled.isEmpty else { return }
       try store.database.execute(
         "UPDATE credentials SET revoked_at_ms = ?2 WHERE principal_id = ?1 AND revoked_at_ms IS NULL",
         [.text(id.rawValue), .integer(milliseconds)])
