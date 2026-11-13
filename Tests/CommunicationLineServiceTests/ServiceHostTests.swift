@@ -198,4 +198,19 @@ struct ServiceHostTests {
         maximumFrame: 4096)
     }
   }
+
+  @Test func test_stop_closesTheDatabaseAndFoldsItsLog() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(storeFolder: folder)
+    _ = try ask(host, WireRequest(token: nil, operation: "owner.credential"))
+    let log = folder.appendingPathComponent(ServiceRuntime.databaseName + "-wal").path
+    let before = (try? FileManager.default.attributesOfItem(atPath: log)[.size] as? Int) ?? 0
+    #expect(before > 0, "the running service has records in its write-ahead log")
+
+    host.stop()
+
+    let after = (try? FileManager.default.attributesOfItem(atPath: log)[.size] as? Int) ?? 0
+    #expect(after == 0, "stopping closes the database, which empties the log")
+  }
 }
