@@ -118,3 +118,12 @@ New and open until the v0.1 release.
 | Trigger | Rule |
 |---|---|
 | `settings_audit_cannot_be_replaced` | An insert into `settings_audit` that reuses a stored id is refused, so `INSERT OR REPLACE` cannot rewrite an audit record. The same guarantee as the activity log: it holds against the service and ordinary SQL, not against someone who can edit the file and drop triggers. |
+
+## Version 6
+
+New and open until the v0.1 release.
+
+| Trigger | Rule |
+|---|---|
+| `activity_id_is_never_minus_one` | An insert that leaves the id -1 in `activity` is rolled back. In a BEFORE INSERT trigger SQLite shows `NEW.id` as -1 when the insert gave no id, so a stored row with id -1 would make the replace guard of version 4 refuse every later insert. |
+| `settings_audit_id_is_never_minus_one` | The same for `settings_audit` and the guard of version 5. |
