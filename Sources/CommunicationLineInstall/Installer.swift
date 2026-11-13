@@ -86,13 +86,17 @@ public struct Installer {
     guard userID != 0 else { throw InstallError.refusedAsRoot }
     let programs = try sourcePrograms()
     do {
+      let commandFiles = try keptCommandFiles()
       let upgraded = FileManager.default.fileExists(atPath: layout.manifestURL.path)
+      let bundles = try resourceBundles()
       try unloadIfLoaded()
-      try prepareFolders()
-      let bundles = try placeResourceBundles()
+      try prepareProgramFolders()
+      // Listed before anything is copied, so that an install which fails half way can be undone.
+      try writeManifest(folders: bundles.map(\.target.path), commandFiles: commandFiles)
+      try prepareStore()
+      try placeResourceBundles(bundles)
       try place(programs)
       try writePlist()
-      try writeManifest(folders: bundles)
       try launchd.bootstrap(plist: layout.plistURL, userID: userID)
       let issued = try provideOwnerToken()
       return InstallReport(
@@ -128,9 +132,12 @@ public struct Installer {
     try launchd.bootout(label: HostLayout.launchAgentLabel, userID: userID)
   }
 
-  private func prepareFolders() throws {
+  private func prepareProgramFolders() throws {
     try HostFiles.makeFolder(layout.supportFolder, mode: 0o700)
     try HostFiles.makeFolder(layout.binFolder, mode: 0o755)
+  }
+
+  private func prepareStore() throws {
     try StoreFolder.prepare(layout.storeFolder, waitingUpTo: 5000)
     let store = try SQLiteStore.open(
       at: layout.databaseURL, busyTimeoutMilliseconds: 5000, migrations: SchemaMigrations.all)
@@ -149,19 +156,21 @@ public struct Installer {
   }
 
   /// The service reads its defaults from a resource bundle that sits next to the program, so the
-  /// bundles of this package travel with it. Returns the installed folders.
-  private func placeResourceBundles() throws -> [String] {
+  /// bundles of this package travel with it.
+  private func resourceBundles() throws -> [(source: URL, target: URL)] {
     let found = try FileManager.default.contentsOfDirectory(
       at: executableFolder, includingPropertiesForKeys: [.isDirectoryKey]
     ).filter {
       $0.lastPathComponent.hasPrefix(Self.bundlePrefix) && $0.pathExtension == "bundle"
         && !isFile($0)
     }
-    return try found.map { source in
-      let target = layout.binFolder.appendingPathComponent(source.lastPathComponent)
-      try HostFiles.copyFolder(from: source, to: target)
-      return target.path
+    return found.map { source in
+      (source, layout.binFolder.appendingPathComponent(source.lastPathComponent))
     }
+  }
+
+  private func placeResourceBundles(_ bundles: [(source: URL, target: URL)]) throws {
+    for bundle in bundles { try HostFiles.replaceFolder(from: bundle.source, to: bundle.target) }
   }
 
   private func writePlist() throws {
@@ -170,19 +179,28 @@ public struct Installer {
   }
 
   /// The mail commands that `agent add` listed in an earlier manifest stay listed, so that an
-  /// upgrade does not make uninstall forget them.
-  private func keptCommandFiles() -> [String] {
-    guard let earlier = try? Manifest.read(from: layout.manifestURL) else { return [] }
+  /// upgrade does not make uninstall forget them. No manifest means a first install; a manifest
+  /// that cannot be read stops the install, because writing a new one would drop those entries.
+  private func keptCommandFiles() throws -> [String] {
+    guard FileManager.default.fileExists(atPath: layout.manifestURL.path) else { return [] }
+    let earlier: Manifest
+    do {
+      earlier = try Manifest.read(from: layout.manifestURL)
+    } catch {
+      throw InstallError.filesystem(
+        "the manifest \(layout.manifestURL.path) cannot be read, so the install stopped "
+          + "before changing anything: \(error)")
+    }
     let policy = ManifestPolicy(layout: layout)
     return earlier.files.filter { policy.isCommandFile($0) }
   }
 
-  private func writeManifest(folders: [String]) throws {
+  private func writeManifest(folders: [String], commandFiles: [String]) throws {
     let manifest = Manifest(
       files: [
         layout.clientBinary.path, layout.serviceBinary.path, layout.plistURL.path,
         layout.manifestURL.path,
-      ] + keptCommandFiles(), folders: folders,
+      ] + commandFiles, folders: folders,
       registrations: [.launchAgent(label: HostLayout.launchAgentLabel, userID: userID)],
       storeFolder: layout.storeFolder.path)
     try HostFiles.replace(try manifest.encoded(), at: layout.manifestURL, mode: 0o600)

@@ -43,13 +43,25 @@ enum HostFiles {
     }
   }
 
-  /// Replaces the folder at `target` with a copy of `source`. The old copy is removed first, which
-  /// is safe because the service that reads it is not running during an install.
-  static func copyFolder(from source: URL, to target: URL) throws {
-    if FileManager.default.fileExists(atPath: target.path) {
-      try FileManager.default.removeItem(at: target)
+  /// Replaces the folder at `target` with a copy of `source`. The copy is made beside the target
+  /// first and swapped in, so a copy that fails leaves the old folder as it was.
+  static func replaceFolder(from source: URL, to target: URL) throws {
+    let manager = FileManager.default
+    let staged = target.deletingLastPathComponent()
+      .appendingPathComponent(".\(target.lastPathComponent).new")
+    if manager.fileExists(atPath: staged.path) { try manager.removeItem(at: staged) }
+    do {
+      try manager.copyItem(at: source, to: staged)
+      if manager.fileExists(atPath: target.path) {
+        _ = try manager.replaceItemAt(target, withItemAt: staged)
+      } else {
+        try manager.moveItem(at: staged, to: target)
+      }
+    } catch {
+      // The copy error is the one that matters; a staged folder that stays is replaced next time.
+      if manager.fileExists(atPath: staged.path) { try? manager.removeItem(at: staged) }
+      throw error
     }
-    try FileManager.default.copyItem(at: source, to: target)
   }
 
   /// Creates the file empty with `mode` unless it exists; an existing file keeps its contents.
