@@ -211,5 +211,10 @@ public enum SchemaMigrations {
       WHEN (SELECT open FROM activity_retention_gate WHERE id = 1) = 0
       BEGIN SELECT RAISE(ABORT, 'activity is deleted only by retention'); END
       """,
+      """
+      CREATE TRIGGER activity_cannot_be_replaced BEFORE INSERT ON activity
+      WHEN NEW.id IS NOT NULL AND EXISTS (SELECT 1 FROM activity WHERE id = NEW.id)
+      BEGIN SELECT RAISE(ABORT, 'a stored activity record cannot be replaced'); END
+      """,
     ])
 }
