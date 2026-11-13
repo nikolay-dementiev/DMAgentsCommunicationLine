@@ -79,8 +79,13 @@ tokens, and prints its path.
 `--delete-data` also removes the store folder, but only when no delivery is pending. It counts the pending
 mail before it changes anything and again after the service has stopped. If any mail is pending it refuses,
 prints the count and removes nothing. Acknowledge the mail first, or keep the data. If mail arrives while the service is stopping, the
-command refuses after the service was stopped; run `commline install` to start it again. The store is removed
-before the manifest, so a failed `--delete-data` can be repeated.
+command refuses after the service was stopped; run `commline install` to start it again.
+
+After it has stopped the launchd job, `--delete-data` takes the service's own instance lock
+(`commline.lock` in the store folder) and keeps it until the store is gone, so no service can start
+between the last count and the removal. If a service still holds the lock (one started by hand, or one
+that launchd started again) the command refuses and removes nothing; stop that service and run it again.
+The store is removed before the manifest, so a failed `--delete-data` can be repeated.
 
 Installing again on a kept store reuses the database and the owner token.
 

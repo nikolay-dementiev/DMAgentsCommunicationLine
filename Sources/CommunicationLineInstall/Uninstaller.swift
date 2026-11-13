@@ -27,6 +27,8 @@ public enum UninstallError: Error, Equatable {
   case pendingMail(count: Int, storeFolder: String)
   /// The manifest names a path outside the home folder, so it is not trusted.
   case unsafeManifest(String)
+  /// A service still holds the store: launchd did not own it, or started it again.
+  case serviceRunning(storeFolder: String)
   case launchd(String)
   case filesystem(String)
 }
@@ -45,6 +47,11 @@ extension UninstallError: CustomStringConvertible {
         + "The service may have been stopped: run commline install to start it again"
     case .unsafeManifest(let path):
       return "the manifest names a path outside the home folder: \(path); nothing was removed"
+    case .serviceRunning(let storeFolder):
+      return
+        "a commline service is still running on \(storeFolder), so nothing was deleted; "
+        + "stop it and run the command again. The launchd job was stopped: "
+        + "run commline install to start it again"
     case .launchd(let reason): return "launchd refused the request: \(reason)"
     case .filesystem(let reason): return "a file could not be removed: \(reason)"
     }
@@ -64,15 +71,17 @@ public struct Uninstaller {
   private let userID: UInt32
   private let launchd: any LaunchdControl
   private let pendingMail: any PendingMailCounter
+  private let storeLock: any StoreLocking
 
   public init(
     layout: HostLayout, userID: UInt32, launchd: any LaunchdControl,
-    pendingMail: any PendingMailCounter
+    pendingMail: any PendingMailCounter, storeLock: any StoreLocking = FileStoreLock()
   ) {
     self.layout = layout
     self.userID = userID
     self.launchd = launchd
     self.pendingMail = pendingMail
+    self.storeLock = storeLock
   }
 
   public func uninstall(deleteData: Bool) throws -> UninstallReport {
@@ -81,7 +90,10 @@ public struct Uninstaller {
     try requireRecognised(manifest)
     if deleteData { try requireNoPendingMail(manifest) }
     try unregister(manifest)
-    // Mail may have arrived while the service was still running.
+    // The lock is taken before the last count and kept until the store is gone: no service can
+    // start in between and take mail the count did not see.
+    let holding = deleteData ? try acquireStore(manifest) : nil
+    defer { holding?.release() }
     if deleteData { try requireNoPendingMail(manifest) }
     var removed = try remove(manifest)
     // The store goes before the manifest, so that a failure here can be retried.
@@ -114,6 +126,16 @@ public struct Uninstaller {
     for case .launchAgent(let label, let owner) in manifest.registrations
     where label != HostLayout.launchAgentLabel || owner != userID {
       throw UninstallError.unsafeManifest("launch agent \(label) of user \(owner)")
+    }
+  }
+
+  private func acquireStore(_ manifest: Manifest) throws -> any StoreLockHolding {
+    do {
+      return try storeLock.lock(storeFolder: URL(fileURLWithPath: manifest.storeFolder))
+    } catch StoreLockError.held {
+      throw UninstallError.serviceRunning(storeFolder: manifest.storeFolder)
+    } catch {
+      throw UninstallError.filesystem("the store could not be locked: \(error)")
     }
   }
 

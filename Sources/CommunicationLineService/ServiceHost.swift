@@ -17,7 +17,7 @@ public enum ServiceHostError: Error, Equatable {
 /// private store folder. Each connection carries one request and one response.
 public final class ServiceHost: @unchecked Sendable {
   public static let socketName = ServiceFiles.socketName
-  public static let lockName = "commline.lock"
+  public static let lockName = ServiceFiles.lockName
 
   public let socketPath: String
   public let frameMaximum: Int

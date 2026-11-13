@@ -22,6 +22,28 @@ final class ScriptedPendingCount: PendingMailCounter, @unchecked Sendable {
   }
 }
 
+/// Records what the host looked like when the store lock was taken and when it was given back.
+final class ObservingStoreLock: StoreLocking, @unchecked Sendable {
+  private let lock = NSLock()
+  private var recorded: [String] = []
+  private let observe: @Sendable () -> String
+
+  var events: [String] { lock.withLock { recorded } }
+
+  init(observe: @escaping @Sendable () -> String) { self.observe = observe }
+
+  func lock(storeFolder: URL) throws -> any StoreLockHolding {
+    lock.withLock { recorded.append("locked \(observe())") }
+    return Holding(owner: self)
+  }
+
+  private struct Holding: StoreLockHolding {
+    let owner: ObservingStoreLock
+
+    func release() { owner.lock.withLock { owner.recorded.append("released \(owner.observe())") } }
+  }
+}
+
 struct UninstallerTests {
   private struct World {
     let home: TemporaryHome
@@ -157,6 +179,38 @@ struct UninstallerTests {
     #expect(world.exists(world.layout.ownerTokenURL), "the tokens are untouched")
     #expect(
       world.exists(world.layout.manifestURL), "the manifest is kept so that this can be retried")
+  }
+
+  @Test func test_deleteData_takesTheStoreLockBeforeTheLastCount_andKeepsItUntilTheStoreIsGone()
+    throws
+  {
+    let world = try World(pending: [0, 0])
+    let database = world.layout.databaseURL
+    let pending = world.pending
+    let observing = ObservingStoreLock {
+      "count=\(pending.asked) store=\(FileManager.default.fileExists(atPath: database.path))"
+    }
+    let uninstaller = Uninstaller(
+      layout: world.layout, userID: 501, launchd: world.launchd, pendingMail: world.pending,
+      storeLock: observing)
+
+    _ = try uninstaller.uninstall(deleteData: true)
+
+    #expect(
+      observing.events == ["locked count=1 store=true", "released count=2 store=false"],
+      "locked after the first count and before the last, released once the store was removed")
+  }
+
+  @Test func test_keepingTheData_needsNoStoreLock() throws {
+    let world = try World()
+    let observing = ObservingStoreLock { "" }
+
+    _ = try Uninstaller(
+      layout: world.layout, userID: 501, launchd: world.launchd, pendingMail: world.pending,
+      storeLock: observing
+    ).uninstall(deleteData: false)
+
+    #expect(observing.events.isEmpty, "the store is left alone, so nothing is locked")
   }
 
   @Test func test_deleteData_withNoPendingMail_removesTheStoreToo() throws {
