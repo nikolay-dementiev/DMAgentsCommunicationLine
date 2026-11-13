@@ -50,25 +50,28 @@ public final class SQLiteMessageStore: MessageStore {
   }
 
   public func message(id: MessageID) throws -> StoredMessage? {
+    // One statement is one snapshot: the message and its recipients cannot disagree.
     let rows = try store.database.rows(
       """
-      SELECT m.seq, m.sender, p.family, m.subject, m.body, m.created_at_ms
-      FROM messages m JOIN principals p ON p.id = m.sender WHERE m.id = ?1
+      SELECT m.seq, m.sender, p.family, m.subject, m.body, m.created_at_ms, d.recipient
+      FROM messages m
+      JOIN principals p ON p.id = m.sender
+      LEFT JOIN deliveries d ON d.message_seq = m.seq
+      WHERE m.id = ?1
+      ORDER BY d.rowid
       """,
       [.text(id.rawValue)])
     guard let row = rows.first else { return nil }
-    guard case .integer(let sequence) = row[0], case .text(let sender) = row[1],
+    guard case .text(let sender) = row[1],
       case .text(let family) = row[2], case .text(let subject) = row[3],
       case .text(let body) = row[4], case .integer(let milliseconds) = row[5]
     else { throw StoreError.invalidStoredIdentity("message \(id.rawValue)") }
-    let recipients = try store.database.rows(
-      "SELECT recipient FROM deliveries WHERE message_seq = ?1 ORDER BY rowid",
-      [.integer(sequence)]
-    ).map { row -> PrincipalID in
-      guard case .text(let recipient) = row[0] else {
-        throw StoreError.invalidStoredIdentity("delivery of message \(id.rawValue)")
+    let recipients = try rows.compactMap { row -> PrincipalID? in
+      switch row[6] {
+      case .null: return nil
+      case .text(let recipient): return PrincipalID(recipient)
+      case .integer: throw StoreError.invalidStoredIdentity("delivery of message \(id.rawValue)")
       }
-      return PrincipalID(recipient)
     }
     return StoredMessage(
       id: id, sender: PrincipalID(sender), family: family, recipients: recipients,
