@@ -105,6 +105,22 @@ struct DispatcherActivityTests {
       ], "refusals leave a record with the error code, and unknown names are not copied")
   }
 
+  @Test func test_aStorageFailure_isNeverRecordedAsAnUnauthenticatedCaller() throws {
+    let world = try makeWorld()
+    let raw = try RawFile(folder: world.fixture.folder)
+    let before = try records(world).count
+
+    try raw.execute("ALTER TABLE credentials RENAME TO credentials_away")
+    let failed = world.fixture.call("inbox", token: world.alice.token)
+    try raw.execute("ALTER TABLE credentials_away RENAME TO credentials")
+    let all = try records(world)
+
+    #expect(failed.failure?.code == .internal, "the request fails: it is not a refusal")
+    #expect(
+      all.count == before,
+      "no record claims the caller was unauthenticated: \(all.suffix(1).map(\.actor))")
+  }
+
   @Test func test_theOwnerCredentialReplacement_isRecorded() throws {
     let world = try makeWorld()
 
