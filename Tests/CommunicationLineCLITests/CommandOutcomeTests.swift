@@ -205,6 +205,23 @@ struct CommandOutcomeTests {
     }
   }
 
+  @Test func test_textOutput_escapesBidirectionalControlsAndUnicodeLineSeparators() {
+    let bidi = (0x202A...0x202E).map { $0 } + (0x2066...0x2069).map { $0 } + [0x2028, 0x2029]
+    let hostile = "a" + String(String.UnicodeScalarView(bidi.compactMap(Unicode.Scalar.init))) + "b"
+    let result = WireValue.object([
+      "sender": .string(hostile), "recipients": .array([.string(hostile)]),
+      "subject": .string(hostile), "body": .string(hostile),
+    ])
+
+    let outcome = run(["read", "m1"]) { _ in .success(result) }
+
+    let output = outcome.harness.standardOutput
+    let raw = output.unicodeScalars.filter { bidi.contains(Int($0.value)) }
+    #expect(raw.isEmpty, "no bidi control or line separator reaches the terminal: \(raw.count)")
+    #expect(output.contains("\\u{202e}"), "the right-to-left override is shown as an escape")
+    #expect(output.contains("\\u{2028}"), "the line separator is shown as an escape")
+  }
+
   @Test func test_aMessageBody_keepsItsLineBreaksAndTabs() {
     let result = WireValue.object([
       "sender": .string("p1"), "recipients": .array([.string("p2")]), "subject": .string("s"),
