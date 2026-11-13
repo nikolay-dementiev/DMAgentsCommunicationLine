@@ -5,13 +5,16 @@ import Foundation
 public struct RunnerEnvironment: Sendable {
   public let pause: @Sendable (TimeInterval) -> Void
   public let directoryExists: @Sendable (String) -> Bool
+  public let now: @Sendable () -> Date
 
   public init(
     pause: @escaping @Sendable (TimeInterval) -> Void,
-    directoryExists: @escaping @Sendable (String) -> Bool
+    directoryExists: @escaping @Sendable (String) -> Bool,
+    now: @escaping @Sendable () -> Date = { Date() }
   ) {
     self.pause = pause
     self.directoryExists = directoryExists
+    self.now = now
   }
 
   public static let system = RunnerEnvironment(

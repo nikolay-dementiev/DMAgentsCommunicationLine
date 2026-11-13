@@ -70,7 +70,8 @@ struct WaiterTests {
   }
 
   @Test func test_untilMail_survivesAServiceRestart() {
-    let outcome = waiter([Self.timeout, Self.down, Self.garbled, Self.down, Self.mail])
+    let outcome = waiter(
+      [Self.timeout, Self.down, Self.garbled, Self.down, Self.mail], secondsPerReading: 15)
 
     #expect(outcome.status == 0, "after the restart the waiter woke up with the mail")
     #expect(outcome.requests() == 5, "it reconnected for every attempt")

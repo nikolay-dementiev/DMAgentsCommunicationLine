@@ -72,7 +72,8 @@ public struct WireResponse: Equatable, Sendable, Codable {
     let isSuccess = try container.decode(Bool.self, forKey: .isSuccess)
     let result = try container.decodeIfPresent(WireValue.self, forKey: .result)
     let failure = try container.decodeIfPresent(WireFailure.self, forKey: .failure)
-    let consistent = isSuccess ? (failure == nil) : (failure != nil && result == nil)
+    let consistent =
+      isSuccess ? (failure == nil && result != nil) : (failure != nil && result == nil)
     guard consistent else {
       throw DecodingError.dataCorrupted(
         .init(codingPath: [], debugDescription: "ok contradicts result and error"))

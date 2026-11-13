@@ -80,10 +80,10 @@ public struct AgentSetup {
         "name": .string(request.name),
       ])
     let id = try text("id", in: created)
-    let issued = try call(
-      service, "credential.issue", token: ownerToken, ["principal": .string(id)])
-    let token = try text("token", in: issued)
     do {
+      let issued = try call(
+        service, "credential.issue", token: ownerToken, ["principal": .string(id)])
+      let token = try text("token", in: issued)
       return try writeFiles(request: request, id: id, token: token, commandFile: commandFile)
     } catch {
       throw failedAfterCreating(id, service: service, ownerToken: ownerToken, cause: error)

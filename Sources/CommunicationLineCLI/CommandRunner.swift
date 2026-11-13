@@ -149,6 +149,7 @@ public struct CommandRunner {
     let folder = (socket as NSString).deletingLastPathComponent
     while true {
       do {
+        let started = environment.now()
         let response = try connect(socket).exchange(request)
         if let failure = response.failure {
           standardError("commline: \(failure.code.rawValue): \(failure.message)")
@@ -159,6 +160,10 @@ public struct CommandRunner {
           return CommandExitStatus.success.rawValue
         }
         if case .object(let fields)? = response.result, fields["outcome"] == .string("timeout") {
+          // A wait that returns at once (`messaging.wait` set to 0) must not become a busy loop.
+          if environment.now().timeIntervalSince(started) < Self.reconnectPause {
+            environment.pause(Self.reconnectPause)
+          }
           continue
         }
         // An answer that is neither: do not spin on it.

@@ -110,6 +110,11 @@ public struct Uninstaller {
     if let path = ManifestPolicy(layout: layout).firstRefusedEntry(in: manifest) {
       throw UninstallError.unsafeManifest(path)
     }
+    // A registration goes straight to launchd, so only the one this install makes is accepted.
+    for case .launchAgent(let label, let owner) in manifest.registrations
+    where label != HostLayout.launchAgentLabel || owner != userID {
+      throw UninstallError.unsafeManifest("launch agent \(label) of user \(owner)")
+    }
   }
 
   private func requireNoPendingMail(_ manifest: Manifest) throws {
