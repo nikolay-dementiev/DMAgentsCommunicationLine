@@ -53,6 +53,18 @@ struct HostCommandTests {
     }
   }
 
+  // MARK: - version
+
+  @Test func test_version_isPrintedWithoutTouchingTheServiceOrTheHost() {
+    let harness = CLIHarness()
+
+    let status = harness.run(["--version"])
+
+    #expect(status == 0, "--version succeeds")
+    #expect(harness.standardOutput == "0.1.0\n", "only the version string")
+    #expect(harness.connectedSockets.isEmpty, "no service is asked")
+  }
+
   // MARK: - owner recover
 
   @Test func test_ownerRecover_runsTheRecoveryOnTheHostWithoutAnyToken() {
