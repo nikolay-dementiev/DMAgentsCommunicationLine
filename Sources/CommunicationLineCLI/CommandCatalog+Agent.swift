@@ -17,7 +17,10 @@ extension CommandCatalog {
           guard let data = FileManager.default.contents(atPath: path) else {
             throw UsageError("cannot read the body file \(path)")
           }
-          body = String(decoding: data, as: UTF8.self)
+          guard let text = String(data: data, encoding: .utf8) else {
+            throw UsageError("the body file \(path) is not UTF-8 text")
+          }
+          body = text
         }
         return [
           "to": .array(invocation.all("to").map { .string($0) }),

@@ -44,11 +44,21 @@ struct CommandRequestTests {
   @Test func test_send_refusesABodyFileThatIsNotUTF8() {
     let body = "/tmp/clt-body-" + UUID().uuidString.prefix(8).lowercased()
     FileManager.default.createFile(atPath: body, contents: Data([0x66, 0xFF, 0xFE, 0x67]))
-    defer { unlink(body) }
-
-    #expect(throws: (any Error).self, "bytes that are not UTF-8 are refused, not rewritten") {
-      _ = try sent(["send", "--to", "p1", "--subject", "s", "--body-file", body])
+    let file = TokenFileFixture()
+    defer {
+      unlink(body)
+      file.remove()
     }
+    let harness = CLIHarness()
+
+    let status = harness.run(
+      store + [
+        "--token-file", file.path, "send", "--to", "p1", "--subject", "s", "--body-file", body,
+      ])
+
+    #expect(
+      status == CommandExitStatus.usage.rawValue, "bytes that are not UTF-8 are a usage error")
+    #expect(harness.connection.requests.isEmpty, "nothing was sent with rewritten bytes")
   }
 
   @Test func test_agentCommands_buildTheirRequests() throws {
