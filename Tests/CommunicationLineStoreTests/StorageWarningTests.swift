@@ -36,6 +36,17 @@ import Testing
     }
   }
 
+  @Test func test_anUnusableWarningPercent_isReportedUnderItsOwnKey() throws {
+    let fixture = try Fixture()
+    try fixture.world.identity.raw().execute(
+      "INSERT INTO settings_values (key, scope, subject, value) VALUES ('storage.warning_percent', 'global', '', '0')"
+    )
+
+    #expect(throws: CleanupError.invalidSetting("storage.warning_percent")) {
+      _ = try fixture.storage.status()
+    }
+  }
+
   @Test func test_aSmallStore_underTheDefaultBudget_hasNoWarning() throws {
     let fixture = try Fixture()
 

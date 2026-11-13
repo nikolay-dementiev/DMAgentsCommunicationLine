@@ -36,6 +36,19 @@ struct ErrorMappingTests {
       "the detail reaches the reporter once")
   }
 
+  @Test func test_anUnusableSetting_isTypedWithItsOwnKeyAndNotReported() {
+    let reporter = RecordingReporter()
+
+    let response = ErrorMapping.response(
+      for: CleanupError.invalidSetting("health.threshold"), operation: "health",
+      reporter: reporter)
+
+    #expect(response.failure?.code == .invalidSetting, "a setting the service cannot use")
+    #expect(
+      response.failure?.message.contains("health.threshold") == true, "the message names the key")
+    #expect(reporter.operations.isEmpty, "it is an expected failure, not an internal one")
+  }
+
   @Test func test_expectedError_isTypedAndNotReported() {
     let reporter = RecordingReporter()
 
