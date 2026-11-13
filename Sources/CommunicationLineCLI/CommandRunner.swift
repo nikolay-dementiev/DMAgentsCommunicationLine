@@ -46,14 +46,20 @@ public struct CommandRunner {
       if command.words == ["wait"], invocation.flags.contains("until-mail") {
         return waitUntilMail(request, socket: socket)
       }
+      let reservation = try reserveTokenFile(for: command, invocation)
+      defer { reservation?.discard() }
       return perform(
-        request, command: command, asJSON: invocation.flags.contains("json"), socket: socket)
+        request, command: command, asJSON: invocation.flags.contains("json"), socket: socket,
+        reservation: reservation)
     } catch let error as UsageError {
       standardError("commline: \(error.message)")
       return CommandExitStatus.usage.rawValue
     } catch let error as TokenInputError {
       standardError("commline: \(describe(error))")
       return CommandExitStatus.tokenInput.rawValue
+    } catch TokenReservation.Failure.cannotCreate(let path, let reason) {
+      standardError("commline: cannot create the token file \(path): \(reason)")
+      return CommandExitStatus.failure.rawValue
     } catch {
       standardError("commline: \(error)")
       return CommandExitStatus.failure.rawValue
@@ -223,9 +229,23 @@ public struct CommandRunner {
     try tokenReader.read(tokenFile: invocation.single("token-file"))
   }
 
-  private func perform(_ request: WireRequest, command: Command, asJSON: Bool, socket: String)
-    -> Int32
+  /// The commands that issue a credential never print it: the token goes to a file the caller
+  /// names, which is created first so that a bad path stops the command before anything changes.
+  private func reserveTokenFile(for command: Command, _ invocation: Invocation) throws
+    -> TokenReservation?
   {
+    guard command.presentation == .token else { return nil }
+    guard let path = invocation.single("token-out") else {
+      throw UsageError(
+        "--token-out <path> is required: the new token is written to that file and never printed")
+    }
+    return try TokenReservation(path: path)
+  }
+
+  private func perform(
+    _ request: WireRequest, command: Command, asJSON: Bool, socket: String,
+    reservation: TokenReservation?
+  ) -> Int32 {
     let response: WireResponse
     do {
       response = try connect(socket).exchange(request)
@@ -248,6 +268,9 @@ public struct CommandRunner {
       return CommandExitStatus(failureClass: failure.code.errorClass).rawValue
     }
     let result = response.result ?? .object([:])
+    if let reservation {
+      return store(result, in: reservation, asJSON: asJSON)
+    }
     if asJSON {
       do {
         standardOutput(try Renderer.json(result, encode: encode))
@@ -262,6 +285,38 @@ public struct CommandRunner {
       fields["outcome"] == .string("timeout")
     {
       return CommandExitStatus.timedOut.rawValue
+    }
+    return CommandExitStatus.success.rawValue
+  }
+
+  private func store(_ result: WireValue, in reservation: TokenReservation, asJSON: Bool)
+    -> Int32
+  {
+    guard case .object(let fields) = result, case .string(let token)? = fields["token"],
+      !token.isEmpty
+    else {
+      standardError("commline: the service answered without a token")
+      return CommandExitStatus.protocolError.rawValue
+    }
+    do {
+      try reservation.commit(token: token)
+    } catch {
+      standardError(
+        "commline: the credential was issued but the token could not be saved: \(error); "
+          + "issue a new one")
+      return CommandExitStatus.failure.rawValue
+    }
+    if asJSON {
+      do {
+        let answer = WireValue.object(["token_file": .string(reservation.path)])
+        standardOutput(try Renderer.json(answer, encode: encode))
+      } catch {
+        standardError(
+          "commline: cannot encode the answer: \(error); the token is in \(reservation.path)")
+        return CommandExitStatus.failure.rawValue
+      }
+    } else {
+      standardOutput("token file: \(reservation.path)")
     }
     return CommandExitStatus.success.rawValue
   }

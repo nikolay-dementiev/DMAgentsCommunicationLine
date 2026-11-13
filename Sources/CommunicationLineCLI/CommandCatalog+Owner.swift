@@ -5,10 +5,10 @@ extension CommandCatalog {
   static let ownerCommands: [Command] = [
     Command(
       words: ["owner", "init"], operation: "owner.credential", needsToken: false,
-      positionals: [], options: [], presentation: .token, arguments: { _, _ in [:] }),
+      positionals: [], options: ["token-out"], presentation: .token, arguments: { _, _ in [:] }),
     Command(
       words: ["owner", "rotate"], operation: "owner.credential", needsToken: true,
-      positionals: [], options: [], presentation: .token, arguments: { _, _ in [:] }),
+      positionals: [], options: ["token-out"], presentation: .token, arguments: { _, _ in [:] }),
     Command(
       words: ["principal", "create"], operation: "principal.create", needsToken: true,
       positionals: [], options: ["family", "role", "name"], presentation: .principal,
@@ -45,7 +45,7 @@ extension CommandCatalog {
     principalCommand("enable"),
     Command(
       words: ["credential", "issue"], operation: "credential.issue", needsToken: true,
-      positionals: ["principal-id"], options: [], presentation: .token,
+      positionals: ["principal-id"], options: ["token-out"], presentation: .token,
       arguments: { _, positionals in ["principal": .string(positionals[0])] }),
     Command(
       words: ["rule", "add"], operation: "rule.add", needsToken: true,

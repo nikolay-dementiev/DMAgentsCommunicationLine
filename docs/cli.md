@@ -20,15 +20,26 @@ writable by group or others (mode 0600). Otherwise the command stops before it c
 
 `owner init` is the only command that needs no token.
 
+### Commands that issue a token
+
+`owner init`, `owner rotate` and `credential issue` never print the token. A token on standard output
+ends up in a terminal scrollback, a shell history of a pipe, or a log. These commands require
+`--token-out <path>`: without it the command is a usage error (status 2) and nothing is sent. The
+program creates the file itself before it asks the service, with mode 0600, exclusively
+(`O_EXCL`) and without following a symbolic link, so an existing file or a link is refused and left
+as it is. It writes the token and a newline after the service has answered, and removes the file
+when the service fails or answers without a token. Standard output carries only the path:
+`token file: <path>`, or `{"token_file":"<path>"}` with `--json`.
+
 ## Commands
 
 | Command | Token | Options and arguments |
 |---|---|---|
-| `owner init` | none | Issues the first owner credential. Prints the token |
-| `owner rotate` | owner | Replaces the owner credential. Prints the new token |
+| `owner init` | none | `--token-out <path>` (required). Issues the first owner credential and writes the token to that file |
+| `owner rotate` | owner | `--token-out <path>` (required). Replaces the owner credential and writes the new token to that file |
 | `principal create` | owner | `--family`, `--role head\|agent`, `--name`. Prints `id`, `family`, `role`, `name` |
 | `principal disable <id>`, `principal enable <id>` | owner | |
-| `credential issue <principal-id>` | owner | Prints the new token (shown once) |
+| `credential issue <principal-id>` | owner | `--token-out <path>` (required). Writes the new token (shown once) to that file |
 | `rule add <from> <to>`, `rule remove <from> <to>`, `rule list` | owner | Family names |
 | `grant add` | owner | `--reader-principal <id>` or `--reader-family <name>`; `--target-principal <id>`, `--target-family <name>` or `--target-global`; `--expires-at-ms <n>`. Prints the grant id |
 | `grant revoke <id>`, `grant list` | owner | |

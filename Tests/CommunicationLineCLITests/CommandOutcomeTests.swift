@@ -248,7 +248,7 @@ struct CommandOutcomeTests {
 
   @Test func test_json_whenTheAnswerCannotBeEncoded_failsVisiblyInsteadOfPrintingNull() {
     struct Unencodable: Error {}
-    let harness = CLIHarness(encode: { _ in throw Unencodable() })
+    let harness = CLIHarness(stdin: "tok-0123456789\n", encode: { _ in throw Unencodable() })
 
     let status = harness.run(["--store", "/tmp/cl-store", "--json", "health"])
 

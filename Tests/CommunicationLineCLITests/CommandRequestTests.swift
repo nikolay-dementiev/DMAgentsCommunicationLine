@@ -5,13 +5,15 @@ import Testing
 
 struct CommandRequestTests {
   private let store = ["--store", "/tmp/cl-store"]
+  private static let issued = WireValue.object(["token": .string("tok-issued-0123456789")])
 
   /// Runs `arguments` with a private token file and returns the single request that was sent.
-  private func sent(_ arguments: [String], file: TokenFileFixture = TokenFileFixture()) throws
-    -> WireRequest
-  {
+  private func sent(
+    _ arguments: [String], file: TokenFileFixture = TokenFileFixture(),
+    answer: WireResponse = .success()
+  ) throws -> WireRequest {
     defer { file.remove() }
-    let harness = CLIHarness()
+    let harness = CLIHarness(answer: { _ in answer })
     let status = harness.run(store + ["--token-file", file.path] + arguments)
     #expect(status == 0, "\(arguments) succeeds: \(harness.standardError)")
     return try #require(harness.connection.requests.first, "\(arguments) sent a request")
@@ -85,8 +87,9 @@ struct CommandRequestTests {
     let out = "/tmp/clq-" + UUID().uuidString.prefix(8).lowercased()
     defer { unlink(out) }
     #expect(
-      try sent(["credential", "issue", "p1", "--token-out", out]).operation == "credential.issue",
-      "issue")
+      try sent(
+        ["credential", "issue", "p1", "--token-out", out], answer: .success(Self.issued)
+      ).operation == "credential.issue", "issue")
     #expect(
       try sent(["rule", "add", "A", "B"]).arguments == ["from": .string("A"), "to": .string("B")],
       "rule add")
@@ -124,7 +127,7 @@ struct CommandRequestTests {
   }
 
   @Test func test_ownerInit_needsNoToken_andOwnerRotateNeedsOne() {
-    let harness = CLIHarness()
+    let harness = CLIHarness(answer: { _ in .success(Self.issued) })
 
     let out = "/tmp/clq-" + UUID().uuidString.prefix(8).lowercased()
     defer { unlink(out) }
@@ -141,7 +144,7 @@ struct CommandRequestTests {
   }
 
   @Test func test_theSocketIsTheStoreFolderSocketOrTheGivenPath() {
-    let byStore = CLIHarness()
+    let byStore = CLIHarness(answer: { _ in .success(Self.issued) })
     let first = "/tmp/clq-" + UUID().uuidString.prefix(8).lowercased()
     let second = "/tmp/clq-" + UUID().uuidString.prefix(8).lowercased()
     defer {
@@ -149,7 +152,7 @@ struct CommandRequestTests {
       unlink(second)
     }
     _ = byStore.run(["--store", "/tmp/cl-store", "owner", "init", "--token-out", first])
-    let bySocket = CLIHarness()
+    let bySocket = CLIHarness(answer: { _ in .success(Self.issued) })
     _ = bySocket.run(["--socket", "/tmp/elsewhere.sock", "owner", "init", "--token-out", second])
 
     #expect(byStore.connectedSockets == ["/tmp/cl-store/commline.sock"], "the store's socket")
