@@ -1,4 +1,5 @@
 import CommunicationLineCLI
+import CommunicationLineInstall
 import CommunicationLineWire
 import Darwin
 import Foundation
@@ -29,8 +30,26 @@ final class FakeHost: HostCommands, @unchecked Sendable {
 
   init(result: Result<[String], any Error> = .success(["installed"])) { self.result = result }
 
+  struct AgentCall: Equatable {
+    let store: String
+    let home: String?
+    let ownerToken: String
+    let request: AgentRequest
+  }
+  private(set) var agents: [AgentCall] = []
+
   func install(home: String?) throws -> [String] {
     lock.withLock { installs.append(home) }
+    return try result.get()
+  }
+
+  func addAgent(storeFolder: String, home: String?, ownerToken: String, request: AgentRequest)
+    throws -> [String]
+  {
+    lock.withLock {
+      agents.append(
+        AgentCall(store: storeFolder, home: home, ownerToken: ownerToken, request: request))
+    }
     return try result.get()
   }
 }

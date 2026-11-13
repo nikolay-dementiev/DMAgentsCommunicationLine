@@ -1,4 +1,5 @@
 import CommunicationLineCLI
+import CommunicationLineInstall
 import Foundation
 import Testing
 
@@ -50,5 +51,81 @@ struct HostCommandTests {
         status == CommandExitStatus.usage.rawValue, "\(arguments) is a usage error")
       #expect(harness.host.installs.isEmpty, "\(arguments) installed nothing")
     }
+  }
+
+  // MARK: - agent add
+
+  private func addAgent(
+    _ extra: [String], file: TokenFileFixture = TokenFileFixture(), host: FakeHost = FakeHost()
+  ) -> (status: Int32, harness: CLIHarness) {
+    defer { file.remove() }
+    let harness = CLIHarness(host: host)
+    let status = harness.run(
+      ["--store", "/tmp/cl-store", "--token-file", file.path, "agent", "add"] + extra)
+    return (status, harness)
+  }
+
+  @Test func test_agentAdd_handsTheOwnerTokenAndTheRequestToTheHost() {
+    let outcome = addAgent(["--family", "ops", "--role", "agent", "--name", "alice"])
+
+    #expect(outcome.status == 0, "the agent is added")
+    #expect(
+      outcome.harness.host.agents == [
+        FakeHost.AgentCall(
+          store: "/tmp/cl-store", home: nil, ownerToken: "tok-0123456789",
+          request: AgentRequest(family: "ops", role: "agent", name: "alice", client: nil))
+      ], "the store, the owner token read from the file, and what was asked for")
+    #expect(outcome.harness.standardOutput == "installed\n", "the host's lines are printed")
+  }
+
+  @Test func test_agentAdd_withAClientAndAHome() {
+    let outcome = addAgent([
+      "--family", "ops", "--role", "head", "--name", "lead", "--client", "claude-code",
+      "--home", "/tmp/h",
+    ])
+
+    #expect(outcome.harness.host.agents.first?.request.client == .claudeCode, "the client")
+    #expect(outcome.harness.host.agents.first?.home == "/tmp/h", "the home folder")
+  }
+
+  @Test func test_agentAdd_badArguments_areUsageErrors_andAddNothing() {
+    let bad: [[String]] = [
+      ["--role", "agent", "--name", "a"],
+      ["--family", "f", "--name", "a"],
+      ["--family", "f", "--role", "agent"],
+      ["--family", "f", "--role", "boss", "--name", "a"],
+      ["--family", "f", "--role", "agent", "--name", "a", "--client", "vim"],
+    ]
+    for arguments in bad {
+      let outcome = addAgent(arguments)
+
+      #expect(
+        outcome.status == CommandExitStatus.usage.rawValue, "\(arguments) is a usage error")
+      #expect(outcome.harness.host.agents.isEmpty, "\(arguments) added nothing")
+    }
+  }
+
+  @Test func test_agentAdd_needsTheStoreFolder_notJustASocket() {
+    let file = TokenFileFixture()
+    defer { file.remove() }
+    let harness = CLIHarness()
+
+    let status = harness.run([
+      "--socket", "/tmp/x.sock", "--token-file", file.path, "agent", "add", "--family", "f",
+      "--role", "agent", "--name", "a",
+    ])
+
+    #expect(status == CommandExitStatus.usage.rawValue, "the agent files go inside the store")
+    #expect(harness.host.agents.isEmpty, "nothing was added")
+  }
+
+  @Test func test_agentAdd_aFailure_exitsNonZero_andSaysWhy() {
+    let outcome = addAgent(
+      ["--family", "f", "--role", "agent", "--name", "a"],
+      host: FakeHost(result: .failure(Refused())))
+
+    #expect(outcome.status == CommandExitStatus.failure.rawValue, "failure")
+    #expect(outcome.harness.standardError.contains("refused for a reason"), "the reason")
+    #expect(outcome.harness.standardOutput.isEmpty, "no result lines")
   }
 }
