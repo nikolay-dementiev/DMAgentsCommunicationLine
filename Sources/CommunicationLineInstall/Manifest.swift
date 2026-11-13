@@ -22,6 +22,11 @@ public struct Manifest: Codable, Equatable, Sendable {
     try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: url))
   }
 
+  /// Replaces the manifest file in one step. It holds paths only, so it is private to the owner.
+  public func write(to url: URL) throws {
+    try HostFiles.replace(try encoded(), at: url, mode: 0o600)
+  }
+
   func encoded() throws -> Data {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys, .prettyPrinted, .withoutEscapingSlashes]

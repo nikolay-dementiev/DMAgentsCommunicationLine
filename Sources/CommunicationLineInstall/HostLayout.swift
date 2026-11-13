@@ -31,6 +31,10 @@ public struct HostLayout: Sendable, Equatable {
     launchAgentsFolder.appendingPathComponent(Self.launchAgentLabel + ".plist")
   }
 
+  public var claudeCommandsFolder: URL {
+    home.appendingPathComponent(".claude/commands", isDirectory: true)
+  }
+
   public var ownerTokenURL: URL { storeFolder.appendingPathComponent("owner.token") }
   public var logURL: URL { storeFolder.appendingPathComponent("service.log") }
   public var databaseURL: URL { storeFolder.appendingPathComponent("commline.sqlite") }
