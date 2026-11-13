@@ -21,6 +21,7 @@ import Testing
         "messaging.subject_max": .integer(512),
         "messaging.body_max": .integer(262_144),
         "messaging.page_size": .integer(100),
+        "service.frame_max": .integer(2_097_152),
       ], "the shipped keys and defaults")
   }
 
@@ -45,6 +46,9 @@ import Testing
     #expect(
       catalog.definition(for: "messaging.body_max")?.range
         == SettingRange(minimum: 1, maximum: 262_144), "body limit is capped at 262144")
+    #expect(
+      catalog.definition(for: "service.frame_max")?.range
+        == SettingRange(minimum: 4096, maximum: 16_777_216), "frame limit is 4096..16777216")
     #expect(
       catalog.definition(for: "health.threshold")?.scopes == [.global, .family, .principal],
       "the overdue threshold is settable per family and per principal")
