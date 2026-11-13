@@ -1,3 +1,4 @@
+import CommunicationLineDomain
 import Darwin
 import Foundation
 
@@ -39,6 +40,10 @@ public enum ServiceCommand {
 
   /// Starts the host, stops it on SIGTERM or SIGINT and returns the exit status.
   public static func run(arguments: [String]) -> Int32 {
+    if arguments == ["--version"] {
+      print(ProductVersion.current)
+      return 0
+    }
     let outcome = start(arguments: arguments) { line in
       FileHandle.standardError.write(Data((line + "\n").utf8))
     }

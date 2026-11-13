@@ -1,3 +1,4 @@
+import CommunicationLineDomain
 import CommunicationLineInstall
 import CommunicationLineWire
 import Foundation
@@ -30,6 +31,10 @@ public struct CommandRunner {
   }
 
   public func run(_ arguments: [String]) -> Int32 {
+    if arguments == ["--version"] {
+      standardOutput(ProductVersion.current)
+      return CommandExitStatus.success.rawValue
+    }
     do {
       let invocation = try Invocation(arguments: arguments)
       if let status = try runHostCommand(invocation) { return status }
