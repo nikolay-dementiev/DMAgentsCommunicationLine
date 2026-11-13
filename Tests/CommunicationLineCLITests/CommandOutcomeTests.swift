@@ -250,7 +250,7 @@ struct CommandOutcomeTests {
     struct Unencodable: Error {}
     let harness = CLIHarness(encode: { _ in throw Unencodable() })
 
-    let status = harness.run(["--store", "/tmp/cl-store", "--json", "owner", "init"])
+    let status = harness.run(["--store", "/tmp/cl-store", "--json", "health"])
 
     #expect(status == CommandExitStatus.failure.rawValue, "an answer that cannot be printed fails")
     #expect(harness.standardOutput.isEmpty, "nothing that looks like a result is printed")
@@ -269,15 +269,6 @@ struct CommandOutcomeTests {
     let fields = try #require(error as? [String: Any])
     #expect((fields["error"] as? [String: String])?["code"] == "unknown_token", "typed error")
     #expect(failed.status == CommandExitStatus.authentication.rawValue, "same status as text mode")
-  }
-
-  @Test func test_ownerInit_printsTheNewTokenOnStandardOutputOnly() {
-    let outcome = run(["owner", "init"], stdin: nil) { _ in
-      .success(.object(["token": .string("the-new-token")]))
-    }
-
-    #expect(outcome.harness.standardOutput == "the-new-token\n", "just the token, for a pipe")
-    #expect(outcome.harness.standardError.isEmpty, "nothing else")
   }
 
   @Test func test_activity_printsOneLinePerRecordAndTheCursor() {

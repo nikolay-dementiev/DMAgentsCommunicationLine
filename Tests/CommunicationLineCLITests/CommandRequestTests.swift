@@ -82,7 +82,11 @@ struct CommandRequestTests {
     #expect(
       try sent(["principal", "disable", "p1"]).arguments == ["principal": .string("p1")], "disable")
     #expect(try sent(["principal", "enable", "p1"]).operation == "principal.enable", "enable")
-    #expect(try sent(["credential", "issue", "p1"]).operation == "credential.issue", "issue")
+    let out = "/tmp/clq-" + UUID().uuidString.prefix(8).lowercased()
+    defer { unlink(out) }
+    #expect(
+      try sent(["credential", "issue", "p1", "--token-out", out]).operation == "credential.issue",
+      "issue")
     #expect(
       try sent(["rule", "add", "A", "B"]).arguments == ["from": .string("A"), "to": .string("B")],
       "rule add")
@@ -122,23 +126,31 @@ struct CommandRequestTests {
   @Test func test_ownerInit_needsNoToken_andOwnerRotateNeedsOne() {
     let harness = CLIHarness()
 
-    let status = harness.run(["--store", "/tmp/cl-store", "owner", "init"])
+    let out = "/tmp/clq-" + UUID().uuidString.prefix(8).lowercased()
+    defer { unlink(out) }
+    let status = harness.run(["--store", "/tmp/cl-store", "owner", "init", "--token-out", out])
 
     #expect(status == 0, "bootstrap without any token input")
     #expect(harness.connection.requests.first?.token == nil, "the request carries no token")
     #expect(harness.connection.requests.first?.operation == "owner.credential", "operation")
     let rotate = CLIHarness(stdin: nil)
     #expect(
-      rotate.run(["--store", "/tmp/cl-store", "owner", "rotate"])
+      rotate.run(["--store", "/tmp/cl-store", "owner", "rotate", "--token-out", out])
         == CommandExitStatus.tokenInput.rawValue,
       "rotation without a token is a token input error")
   }
 
   @Test func test_theSocketIsTheStoreFolderSocketOrTheGivenPath() {
     let byStore = CLIHarness()
-    _ = byStore.run(["--store", "/tmp/cl-store", "owner", "init"])
+    let first = "/tmp/clq-" + UUID().uuidString.prefix(8).lowercased()
+    let second = "/tmp/clq-" + UUID().uuidString.prefix(8).lowercased()
+    defer {
+      unlink(first)
+      unlink(second)
+    }
+    _ = byStore.run(["--store", "/tmp/cl-store", "owner", "init", "--token-out", first])
     let bySocket = CLIHarness()
-    _ = bySocket.run(["--socket", "/tmp/elsewhere.sock", "owner", "init"])
+    _ = bySocket.run(["--socket", "/tmp/elsewhere.sock", "owner", "init", "--token-out", second])
 
     #expect(byStore.connectedSockets == ["/tmp/cl-store/commline.sock"], "the store's socket")
     #expect(bySocket.connectedSockets == ["/tmp/elsewhere.sock"], "the given socket")

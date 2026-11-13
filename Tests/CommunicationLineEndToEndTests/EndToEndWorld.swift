@@ -28,7 +28,7 @@ final class EndToEndWorld: @unchecked Sendable {
     try FileManager.default.createDirectory(
       at: secrets.url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     try startService()
-    ownerToken = try require(run(["owner", "init"]), "owner init").out
+    ownerToken = try issuedToken(["owner", "init"])
   }
 
   deinit { _ = stopService() }
@@ -89,6 +89,19 @@ final class EndToEndWorld: @unchecked Sendable {
     return (status, child.standardOutput.trimmingCharacters(in: .newlines), child.standardError)
   }
 
+  /// Runs a command that issues a credential and reads the token from the file it was told to
+  /// write: the command prints only the path.
+  func issuedToken(_ arguments: [String], token: String? = nil) throws -> String {
+    lock.lock()
+    fileCounter += 1
+    let path = secrets.path + "/issued-\(fileCounter)"
+    lock.unlock()
+    let result = try require(run(arguments + ["--token-out", path], token: token), "\(arguments)")
+    #expect(
+      result.out == "token file: \(path)", "only the path is printed: \(result.out)")
+    return try String(contentsOfFile: path, encoding: .utf8).trimmingCharacters(in: .newlines)
+  }
+
   func asOwner(_ arguments: [String]) throws -> (status: Int32, out: String, err: String) {
     try run(arguments, token: ownerToken)
   }
@@ -108,8 +121,7 @@ final class EndToEndWorld: @unchecked Sendable {
       asOwner(["principal", "create", "--family", family, "--role", role, "--name", name]),
       "principal create")
     let id = String(created.out.split(separator: "\t").first ?? "")
-    let issued = try require(asOwner(["credential", "issue", id]), "credential issue")
-    return (id, issued.out)
+    return (id, try issuedToken(["credential", "issue", id], token: ownerToken))
   }
 
   func send(from sender: Principal, to recipient: Principal, subject: String) throws -> String {
