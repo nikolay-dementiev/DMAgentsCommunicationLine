@@ -85,6 +85,21 @@ struct OwnerRecoveryTests {
       ], "the service is unloaded before the database is touched and loaded afterwards")
   }
 
+  @Test func test_recover_whenItFailsAfterTheServiceWasStopped_startsTheServiceAgain() throws {
+    let world = try World()
+    let folder = world.layout.storeFolder.path
+    try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: folder)
+    defer {
+      try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder)
+    }
+
+    #expect(throws: (any Error).self, "the store folder cannot be written") {
+      _ = try world.recover()
+    }
+
+    #expect(world.launchd.loaded, "the service that was running before runs again")
+  }
+
   @Test func test_recover_withoutAnInstall_orAsRoot_isRefused() throws {
     let world = try World()
     let empty = try TemporaryHome()
