@@ -71,10 +71,9 @@ public final class ServiceHost: @unchecked Sendable {
       return
     }
     isStopped = true
-    let open = activeConnections
+    for descriptor in activeConnections { shutdown(descriptor, SHUT_RDWR) }
     state.unlock()
     unlink(socketPath)
-    for descriptor in open { shutdown(descriptor, SHUT_RDWR) }
     state.lock()
     // The accept loop notices the flag within one poll interval; open connections get a moment.
     let deadline = Date().addingTimeInterval(2)
@@ -161,11 +160,13 @@ public final class ServiceHost: @unchecked Sendable {
   private func serve(_ descriptor: Int32) {
     let stream = FileDescriptorStream(descriptor: descriptor)
     defer {
-      stream.close()
+      // Leave the set before the descriptor is closed: `stop()` shuts the members down while it holds
+      // the same lock, so it can never touch a descriptor number that was closed and reused.
       state.lock()
       activeConnections.remove(descriptor)
       state.broadcast()
       state.unlock()
+      stream.close()
     }
     guard isOwnUser(descriptor) else { return }
     applyTimeouts(to: descriptor)
