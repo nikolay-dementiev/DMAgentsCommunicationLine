@@ -65,6 +65,7 @@ struct MessagingFixture {
   let messages: MessageService
   let store: HookedMessageStore
   let recorder = RecordingArrival()
+  let waitQuota = WaitQuota()
   let clock = MutableClock(Date(timeIntervalSince1970: 1_800_000_000))
   let alpha: Principal
   let alphaToken: CredentialToken
@@ -104,7 +105,8 @@ struct MessagingFixture {
     messages = MessageService(
       store: store, rights: SQLiteRightsStore(store: identity.store), authenticator: service,
       settings: settings,
-      identifiers: SequentialIdentifiers(), clock: clock, arrival: arrival ?? recorder)
+      identifiers: SequentialIdentifiers(), clock: clock, arrival: arrival ?? recorder,
+      waitQuota: waitQuota)
   }
 
   func count(_ table: String) throws -> Int {

@@ -25,6 +25,8 @@ import Testing
         "messaging.page_size": .integer(100),
         "wire.recipients": .integer(32),
         "quota.messages.assigned_per_principal": .integer(100_000),
+        "limits.waits.global": .integer(128),
+        "limits.waits.principal": .integer(2),
         "service.frame_max": .integer(2_097_152),
       ], "the shipped keys and defaults")
   }

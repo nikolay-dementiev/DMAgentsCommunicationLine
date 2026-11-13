@@ -131,7 +131,8 @@ import Testing
       messages = MessageService(
         store: SQLiteMessageStore(store: store), rights: SQLiteRightsStore(store: store),
         authenticator: identity, settings: settings, identifiers: SequentialIdentifiers(),
-        clock: clock, arrival: RecordingArrival())
+        clock: clock, arrival: RecordingArrival(),
+        waitQuota: WaitQuota())
     }
   }
 
