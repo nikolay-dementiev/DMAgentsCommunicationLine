@@ -165,12 +165,20 @@ public struct Installer {
       try LaunchAgentPlist.data(layout: layout), at: layout.plistURL, mode: 0o644)
   }
 
+  /// The mail commands that `agent add` listed in an earlier manifest stay listed, so that an
+  /// upgrade does not make uninstall forget them.
+  private func keptCommandFiles() -> [String] {
+    guard let earlier = try? Manifest.read(from: layout.manifestURL) else { return [] }
+    let policy = ManifestPolicy(layout: layout)
+    return earlier.files.filter { policy.isCommandFile($0) }
+  }
+
   private func writeManifest(folders: [String]) throws {
     let manifest = Manifest(
       files: [
         layout.clientBinary.path, layout.serviceBinary.path, layout.plistURL.path,
         layout.manifestURL.path,
-      ], folders: folders,
+      ] + keptCommandFiles(), folders: folders,
       registrations: [.launchAgent(label: HostLayout.launchAgentLabel, userID: userID)],
       storeFolder: layout.storeFolder.path)
     try HostFiles.replace(try manifest.encoded(), at: layout.manifestURL, mode: 0o600)

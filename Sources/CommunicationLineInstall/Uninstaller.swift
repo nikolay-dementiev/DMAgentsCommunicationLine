@@ -16,7 +16,7 @@ public struct StorePendingMailCounter: PendingMailCounter {
     let store = try SQLiteStore.open(
       at: database, busyTimeoutMilliseconds: 5000, migrations: SchemaMigrations.all)
     defer { store.close() }
-    return try SQLiteHealthStore(store: store).pendingRecipients().reduce(0) { $0 + $1.count }
+    return try SQLiteHealthStore(store: store).totalPending()
   }
 }
 
@@ -41,7 +41,8 @@ extension UninstallError: CustomStringConvertible {
     case .pendingMail(let count, let storeFolder):
       return
         "\(count) message(s) are still pending, so nothing was deleted; "
-        + "read and acknowledge them first, or keep the data in \(storeFolder)"
+        + "read and acknowledge them first, or keep the data in \(storeFolder). "
+        + "The service may have been stopped: run commline install to start it again"
     case .unsafeManifest(let path):
       return "the manifest names a path outside the home folder: \(path); nothing was removed"
     case .launchd(let reason): return "launchd refused the request: \(reason)"
@@ -77,13 +78,17 @@ public struct Uninstaller {
   public func uninstall(deleteData: Bool) throws -> UninstallReport {
     guard userID != 0 else { throw UninstallError.refusedAsRoot }
     let manifest = try readManifest()
-    try requireInsideHome(manifest)
+    try requireRecognised(manifest)
     if deleteData { try requireNoPendingMail(manifest) }
     try unregister(manifest)
     // Mail may have arrived while the service was still running.
     if deleteData { try requireNoPendingMail(manifest) }
-    let removed = try remove(manifest)
+    var removed = try remove(manifest)
+    // The store goes before the manifest, so that a failure here can be retried.
     if deleteData { try removeStore(manifest) }
+    removed += try removeManifest()
+    // Best effort, as for the program folder: it stays when something else lives in it.
+    if deleteData { rmdir(layout.supportFolder.path) }
     return UninstallReport(
       removed: removed, storeFolder: manifest.storeFolder, storeDeleted: deleteData)
   }
@@ -101,11 +106,9 @@ public struct Uninstaller {
     }
   }
 
-  private func requireInsideHome(_ manifest: Manifest) throws {
-    let home = layout.home.standardizedFileURL.path + "/"
-    for path in manifest.files + manifest.folders + [manifest.storeFolder] {
-      let resolved = URL(fileURLWithPath: path).standardizedFileURL.path
-      guard resolved.hasPrefix(home) else { throw UninstallError.unsafeManifest(path) }
+  private func requireRecognised(_ manifest: Manifest) throws {
+    if let path = ManifestPolicy(layout: layout).firstRefusedEntry(in: manifest) {
+      throw UninstallError.unsafeManifest(path)
     }
   }
 
@@ -139,7 +142,6 @@ public struct Uninstaller {
     }
   }
 
-  /// The manifest goes last, so a run that stops half way can be repeated.
   private func remove(_ manifest: Manifest) throws -> [String] {
     let manifestPath = layout.manifestURL.path
     var removed: [String] = []
@@ -154,9 +156,14 @@ public struct Uninstaller {
       }
       removed.append(folder)
     }
-    if try unlinkFile(manifestPath) { removed.append(manifestPath) }
+    // Best effort: the folder stays when the user put something in it, and that is fine.
     rmdir(layout.binFolder.path)
     return removed
+  }
+
+  /// The manifest goes last, so a run that stops half way can be repeated.
+  private func removeManifest() throws -> [String] {
+    try unlinkFile(layout.manifestURL.path) ? [layout.manifestURL.path] : []
   }
 
   /// Removes one file, never a folder. A file that is already gone is fine.
@@ -167,11 +174,12 @@ public struct Uninstaller {
   }
 
   private func removeStore(_ manifest: Manifest) throws {
-    do {
-      try FileManager.default.removeItem(atPath: manifest.storeFolder)
-    } catch {
-      throw UninstallError.filesystem("\(manifest.storeFolder): \(error)")
+    if FileManager.default.fileExists(atPath: manifest.storeFolder) {
+      do {
+        try FileManager.default.removeItem(atPath: manifest.storeFolder)
+      } catch {
+        throw UninstallError.filesystem("\(manifest.storeFolder): \(error)")
+      }
     }
-    rmdir(layout.supportFolder.path)
   }
 }
