@@ -89,15 +89,49 @@ public enum WireCoding {
     return try encoder.encode(value)
   }
 
+  /// Real requests nest a few levels. The decoder recurses on the stack of a connection thread, so
+  /// a hostile frame of brackets must be refused before it is decoded.
+  public static let maximumDepth = 32
+
   public static func decodeRequest(_ data: Data) throws -> WireRequest {
+    guard isWithinDepthLimit(data) else { throw WireError.malformed }
     do { return try JSONDecoder().decode(WireRequest.self, from: data) } catch {
       throw WireError.malformed
     }
   }
 
   public static func decodeResponse(_ data: Data) throws -> WireResponse {
+    guard isWithinDepthLimit(data) else { throw WireError.malformed }
     do { return try JSONDecoder().decode(WireResponse.self, from: data) } catch {
       throw WireError.malformed
     }
+  }
+
+  /// Counts bracket nesting outside strings without recursing.
+  private static func isWithinDepthLimit(_ data: Data) -> Bool {
+    var depth = 0
+    var inString = false
+    var escaped = false
+    for byte in data {
+      if inString {
+        if escaped {
+          escaped = false
+        } else if byte == UInt8(ascii: "\\") {
+          escaped = true
+        } else if byte == UInt8(ascii: "\"") {
+          inString = false
+        }
+        continue
+      }
+      switch byte {
+      case UInt8(ascii: "\""): inString = true
+      case UInt8(ascii: "["), UInt8(ascii: "{"):
+        depth += 1
+        if depth > maximumDepth { return false }
+      case UInt8(ascii: "]"), UInt8(ascii: "}"): depth -= 1
+      default: break
+      }
+    }
+    return true
   }
 }
