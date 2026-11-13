@@ -1,0 +1,68 @@
+# The `commline` command
+
+Status: open until the v0.1 release. The name is a working name.
+
+```
+commline (--store <folder> | --socket <path>) [--token-file <path>] [--json] <command> [options]
+```
+
+`--store` names the store folder of a running [service](service.md); the socket is `commline.sock` in it.
+`--socket` names the socket directly. Exactly one of them is required.
+
+## The token
+
+A token is read from the file named by `--token-file`, or, without that option, from the first line of
+standard input. It is **never** taken from an argument or from the environment, where other processes
+could read it. `--token <value>` and `--token=<value>` are a usage error and nothing is sent.
+
+A token file must be a regular file (not a link) owned by the caller, and must not be readable or
+writable by group or others (mode 0600). Otherwise the command stops before it connects, with status 10.
+
+`owner init` is the only command that needs no token.
+
+## Commands
+
+| Command | Token | Options and arguments |
+|---|---|---|
+| `owner init` | none | Issues the first owner credential. Prints the token |
+| `owner rotate` | owner | Replaces the owner credential. Prints the new token |
+| `principal create` | owner | `--family`, `--role head\|agent`, `--name`. Prints `id`, `family`, `role`, `name` |
+| `principal disable <id>`, `principal enable <id>` | owner | |
+| `credential issue <principal-id>` | owner | Prints the new token (shown once) |
+| `rule add <from> <to>`, `rule remove <from> <to>`, `rule list` | owner | Family names |
+| `grant add` | owner | `--reader-principal <id>` or `--reader-family <name>`; `--target-principal <id>`, `--target-family <name>` or `--target-global`; `--expires-at-ms <n>`. Prints the grant id |
+| `grant revoke <id>`, `grant list` | owner | |
+| `setting get <key>` | any | Prints the value that applies to the caller |
+| `setting set <key> <value>` | owner | `--scope global\|family\|principal`, `--subject <name>`. The value is an integer, `true`/`false`, or text |
+| `send` | any | `--to <id>` (repeatable), `--subject`, and `--body <text>` or `--body-file <path>` |
+| `inbox` | any | `--after <cursor>`. Prints one `id`, `sender`, `created_at_ms`, `subject` line per message (tab separated) and `next: <cursor>` when more follow |
+| `read <message-id>` | any | Prints `From:`, `To:`, `Subject:`, an empty line and the body. Does not acknowledge |
+| `acknowledge <message-id>` | any | |
+| `wait` | any | `--timeout <seconds>`. Prints `mail` or `timeout` |
+
+## Output
+
+Standard output carries the result only; every diagnostic goes to standard error as
+`commline: <code>: <message>`. A command with nothing to show prints `ok`.
+
+With `--json` a result is printed as the JSON document of the [response](service.md) `result`, and a
+failure as `{"error":{"code":"...","message":"..."}}` on standard error. The exit status is the same in
+both modes.
+
+## Exit statuses
+
+The table is stable. A failure is never 0.
+
+| Status | Name | Meaning |
+|---|---|---|
+| 0 | success | The operation succeeded; for `wait`, mail is pending |
+| 1 | failure | The service failed in a way it did not name (`internal`), or `commline` failed |
+| 2 | usage | The command line is wrong. Nothing was sent |
+| 3 | unreachable | Nothing is listening on the socket |
+| 4 | authentication | `token_required`, `unknown_token`, `token_revoked`, `principal_disabled` |
+| 5 | permission | `owner_required`, `agent_required`, `recipient_refused` |
+| 6 | not found | `unknown_principal`, `unknown_recipient`, `message_unavailable`, `unknown_grant`, `unknown_key` |
+| 7 | invalid input | A value the service refused (names, rules, limits, settings, expiry) |
+| 8 | protocol | `bad_request`, `frame_too_large`, or an answer that is not a response |
+| 9 | timed out | `wait` ended without mail |
+| 10 | token input | The token file is missing, unreadable, not private, or empty, or no token was supplied |

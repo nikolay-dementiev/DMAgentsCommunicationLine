@@ -23,6 +23,8 @@ entry point.
 - [Settings catalog](docs/settings.md)
 - [Identity and access rules](docs/access.md)
 - [Messaging](docs/messaging.md)
+- [Service and socket protocol](docs/service.md)
+- [The `commline` command](docs/cli.md)
 
 ## Build and test
 
