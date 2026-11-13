@@ -207,4 +207,20 @@ struct InstallerTests {
       ], "the launchd registration")
     #expect(manifest.storeFolder == world.layout.storeFolder.path, "where the data is")
   }
+
+  @Test func test_everyInstallError_saysWhatToDo() {
+    let described: [(InstallError, String)] = [
+      (.refusedAsRoot, "root"),
+      (.missingExecutable("commline-service"), "commline-service"),
+      (.serviceNotReady("no answer"), "no answer"),
+      (.ownerCredentialUnavailable, "owner"),
+      (.ownerTokenNotWritten("disk full"), "disk full"),
+      (.launchd("bootstrap failed"), "bootstrap failed"),
+      (.filesystem("no space"), "no space"),
+    ]
+    for (error, fragment) in described {
+      #expect("\(error)".contains(fragment), "\(error) mentions \(fragment)")
+      #expect(!"\(error)".contains("InstallError"), "\(error) reads as a sentence, not a case name")
+    }
+  }
 }
