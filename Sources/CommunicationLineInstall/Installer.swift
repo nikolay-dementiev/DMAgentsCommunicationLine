@@ -62,10 +62,12 @@ public struct Installer {
   private let launchd: any LaunchdControl
   private let readiness: any ServiceReadiness
   private let connect: (String) -> any ServiceConnection
+  private let readinessSeconds: TimeInterval
 
   public init(
     layout: HostLayout, executableFolder: URL, userID: UInt32, launchd: any LaunchdControl,
-    readiness: any ServiceReadiness, connect: @escaping (String) -> any ServiceConnection
+    readiness: any ServiceReadiness, connect: @escaping (String) -> any ServiceConnection,
+    readinessSeconds: TimeInterval = Installer.readinessSeconds
   ) {
     self.layout = layout
     self.executableFolder = executableFolder
@@ -73,6 +75,7 @@ public struct Installer {
     self.launchd = launchd
     self.readiness = readiness
     self.connect = connect
+    self.readinessSeconds = readinessSeconds
   }
 
   public func install() throws -> InstallReport {
@@ -176,7 +179,7 @@ public struct Installer {
   /// Returns true when a new owner credential was issued.
   private func provideOwnerToken() throws -> Bool {
     do {
-      try readiness.waitUntilAnswering(socket: layout.socketURL, within: Self.readinessSeconds)
+      try readiness.waitUntilAnswering(socket: layout.socketURL, within: readinessSeconds)
     } catch {
       throw InstallError.serviceNotReady("\(error); see \(layout.logURL.path)")
     }
