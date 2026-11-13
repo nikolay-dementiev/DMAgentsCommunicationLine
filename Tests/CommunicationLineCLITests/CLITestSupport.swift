@@ -86,6 +86,9 @@ final class CLIHarness: @unchecked Sendable {
   private(set) var pauses: [TimeInterval] = []
   /// Folders that exist, as far as the waiter can tell. Everything exists unless a test says not.
   var missingFolders: Set<String> = []
+  /// How far the clock moves on each reading; zero means requests come back instantly.
+  var secondsPerReading: TimeInterval = 0
+  private var elapsed: TimeInterval = 0
   private var standardInput: String?
   private let encode: @Sendable (WireValue) throws -> Data
   let host: FakeHost
@@ -112,7 +115,11 @@ final class CLIHarness: @unchecked Sendable {
       standardError: { self.standardError += $0 + "\n" }, host: host,
       environment: RunnerEnvironment(
         pause: { self.pauses.append($0) },
-        directoryExists: { !self.missingFolders.contains($0) }),
+        directoryExists: { !self.missingFolders.contains($0) },
+        now: {
+          self.elapsed += self.secondsPerReading
+          return Date(timeIntervalSince1970: self.elapsed)
+        }),
       encode: encode)
     return runner.run(arguments)
   }

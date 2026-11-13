@@ -64,6 +64,7 @@ struct WireMessageTests {
     for json in [
       #"{"ok":true,"error":{"code":"internal","message":"m"}}"#,
       #"{"ok":false}"#,
+      #"{"ok":true}"#,
       #"{"ok":false,"result":{},"error":{"code":"internal","message":"m"}}"#,
     ] {
       #expect(throws: WireError.malformed, "refused: \(json)") {

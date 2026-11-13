@@ -12,14 +12,19 @@ struct AgentSetupTests {
     private let lock = NSLock()
     private var recorded: [WireRequest] = []
     let refuseWith: WireErrorCode?
+    let failingOperation: String?
 
     var requests: [WireRequest] { lock.withLock { recorded } }
 
-    init(refuseWith: WireErrorCode? = nil) { self.refuseWith = refuseWith }
+    init(refuseWith: WireErrorCode? = nil, failingOperation: String? = nil) {
+      self.refuseWith = refuseWith
+      self.failingOperation = failingOperation
+    }
 
     func exchange(_ request: WireRequest) throws -> WireResponse {
       lock.withLock { recorded.append(request) }
       if let refuseWith { return .failure(code: refuseWith, message: "refused") }
+      if request.operation == failingOperation { throw ServiceConnectionError.invalidResponse }
       switch request.operation {
       case "principal.create": return .success(.object(["id": .string("p-0001")]))
       case "credential.issue":
@@ -36,10 +41,12 @@ struct AgentSetupTests {
     let service: ScriptedService
     let setup: AgentSetup
 
-    init(installed: Bool = true, refuseWith: WireErrorCode? = nil) throws {
+    init(installed: Bool = true, refuseWith: WireErrorCode? = nil, failingOperation: String? = nil)
+      throws
+    {
       home = try TemporaryHome()
       layout = HostLayout(home: home.url)
-      service = ScriptedService(refuseWith: refuseWith)
+      service = ScriptedService(refuseWith: refuseWith, failingOperation: failingOperation)
       try FileManager.default.createDirectory(
         at: layout.storeFolder, withIntermediateDirectories: true)
       if installed {
@@ -176,6 +183,23 @@ struct AgentSetupTests {
     #expect(
       world.service.requests.map(\.operation).last == "principal.disable",
       "the half-made agent is switched off")
+    #expect(message.contains("p-0001"), "the error names the principal that was left")
+    #expect(message.contains("disabled"), "and says it was disabled")
+  }
+
+  @Test func test_whenTheCredentialCannotBeIssued_thePrincipalIsDisabledAndNamed() throws {
+    let world = try World(failingOperation: "credential.issue")
+    var message = ""
+
+    do {
+      _ = try world.add()
+    } catch {
+      message = "\(error)"
+    }
+
+    #expect(
+      world.service.requests.map(\.operation).last == "principal.disable",
+      "the principal without a credential is switched off")
     #expect(message.contains("p-0001"), "the error names the principal that was left")
     #expect(message.contains("disabled"), "and says it was disabled")
   }

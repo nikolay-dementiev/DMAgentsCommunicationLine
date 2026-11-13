@@ -224,6 +224,27 @@ struct UninstallerTests {
     }
   }
 
+  @Test func test_aRegistrationOfAnotherServiceOrUser_isRefusedBeforeAnythingHappens() throws {
+    let registrations: [Manifest.Registration] = [
+      .launchAgent(label: "com.other.agent", userID: 501),
+      .launchAgent(label: HostLayout.launchAgentLabel, userID: 502),
+    ]
+    for registration in registrations {
+      let world = try World()
+      let callsBefore = world.launchd.calls
+      var manifest = try Manifest.read(from: world.layout.manifestURL)
+      manifest.registrations = [registration]
+      try manifest.write(to: world.layout.manifestURL)
+
+      #expect(throws: UninstallError.self, "\(registration) is not ours") {
+        _ = try world.uninstaller().uninstall(deleteData: false)
+      }
+
+      #expect(world.launchd.calls == callsBefore, "\(registration): launchd was not asked")
+      #expect(world.exists(world.layout.serviceBinary), "\(registration): nothing was removed")
+    }
+  }
+
   @Test func test_aManifestEntryThatIsASymbolicLink_isRefused() throws {
     let world = try World()
     let victim = world.home.url.appendingPathComponent("victim.txt")

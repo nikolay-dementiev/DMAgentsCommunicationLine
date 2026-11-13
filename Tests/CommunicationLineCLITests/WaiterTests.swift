@@ -14,13 +14,15 @@ struct WaiterTests {
   /// Runs `commline wait --until-mail` against a service that answers from `script`, one step per
   /// request. Past the end of the script the test fails instead of looping forever.
   private func waiter(
-    _ script: [Step], extra: [String] = [], missing: Set<String> = []
+    _ script: [Step], extra: [String] = [], missing: Set<String> = [],
+    secondsPerReading: TimeInterval = 0
   ) -> (status: Int32, harness: CLIHarness, requests: () -> Int) {
     let file = TokenFileFixture()
     defer { file.remove() }
     let queue = ScriptQueue(script)
     let harness = CLIHarness(answer: { _ in try queue.next().get() })
     harness.missingFolders = missing
+    harness.secondsPerReading = secondsPerReading
     let status = harness.run(
       ["--store", "/tmp/cl-store", "--token-file", file.path, "wait", "--until-mail"] + extra)
     return (status, harness, { queue.taken })
@@ -51,6 +53,20 @@ struct WaiterTests {
     #expect(outcome.status == CommandExitStatus.failure.rawValue, "it ends with an error")
     #expect(outcome.requests() == 1, "it asked once and did not try again")
     #expect(outcome.harness.pauses.isEmpty, "and did not pause to try again")
+  }
+
+  @Test func test_untilMail_aTimeoutThatCameBackAtOnce_isFollowedByAPause() {
+    let outcome = waiter([Self.timeout, Self.timeout, Self.mail])
+
+    #expect(outcome.status == 0, "it still ends with mail")
+    #expect(outcome.harness.pauses == [1, 1], "one second after each instant timeout")
+  }
+
+  @Test func test_untilMail_aTimeoutAfterARealWait_needsNoPause() {
+    let outcome = waiter([Self.timeout, Self.timeout, Self.mail], secondsPerReading: 15)
+
+    #expect(outcome.status == 0, "it ends with mail")
+    #expect(outcome.harness.pauses.isEmpty, "a wait that lasted is followed at once by the next")
   }
 
   @Test func test_untilMail_survivesAServiceRestart() {
