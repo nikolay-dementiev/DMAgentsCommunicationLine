@@ -10,12 +10,15 @@ public struct CommandRunner {
   private let standardOutput: (String) -> Void
   private let standardError: (String) -> Void
   private let encode: (WireValue) throws -> Data
+  private let host: any HostCommands
 
   public init(
     connect: @escaping (String) -> any ServiceConnection, tokenReader: TokenReader,
     standardOutput: @escaping (String) -> Void, standardError: @escaping (String) -> Void,
+    host: any HostCommands,
     encode: @escaping (WireValue) throws -> Data = { try WireCoding.encode($0) }
   ) {
+    self.host = host
     self.encode = encode
     self.connect = connect
     self.tokenReader = tokenReader
@@ -26,6 +29,7 @@ public struct CommandRunner {
   public func run(_ arguments: [String]) -> Int32 {
     do {
       let invocation = try Invocation(arguments: arguments)
+      if let status = try runHostCommand(invocation) { return status }
       let (command, positionals) = try resolve(invocation)
       let socket = try socketPath(of: invocation)
       let arguments = try command.arguments(invocation, positionals)
@@ -43,6 +47,24 @@ public struct CommandRunner {
       standardError("commline: \(error)")
       return CommandExitStatus.failure.rawValue
     }
+  }
+
+  // MARK: - Host commands
+
+  /// `install` works on the host and needs neither a service nor a token. Returns nil for every
+  /// other command.
+  private func runHostCommand(_ invocation: Invocation) throws -> Int32? {
+    guard invocation.words.first == "install" else { return nil }
+    guard invocation.words.count == 1, invocation.optionNames.isSubset(of: ["home"]) else {
+      throw UsageError("usage: commline install [--home <folder>]")
+    }
+    do {
+      try host.install(home: invocation.single("home")).forEach(standardOutput)
+    } catch {
+      standardError("commline: install failed: \(error)")
+      return CommandExitStatus.failure.rawValue
+    }
+    return CommandExitStatus.success.rawValue
   }
 
   // MARK: - Steps

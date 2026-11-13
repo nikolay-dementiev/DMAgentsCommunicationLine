@@ -11,7 +11,7 @@ struct Invocation: Sendable {
     "store", "socket", "token-file", "to", "subject", "body", "body-file", "after", "limit",
     "timeout",
     "family", "role", "name", "reader-principal", "reader-family", "target-principal",
-    "target-family", "expires-at-ms", "scope",
+    "target-family", "expires-at-ms", "scope", "home", "client",
   ]
   static let flagOptions: Set<String> = ["json", "target-global"]
 
