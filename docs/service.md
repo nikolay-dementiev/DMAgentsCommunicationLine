@@ -107,6 +107,9 @@ otherwise). "Any" means a principal token; the owner token is refused by the mes
 | `rule.list` | owner | none | `rules` (list of `from`, `to`) |
 | `setting.get` | any, or owner | `key` | `key`, `value` (the value that applies to the caller) |
 | `setting.set` | owner | `key`, `value`, `scope` optional (default `global`), `subject` for `family` and `principal` | `key` |
+| `activity.list` | owner | `after` optional cursor (the id of the last record seen), `limit` optional, 1 to `messaging.page_size` | `records` (list of `id`, `at_ms`, `actor`, `operation`, `outcome`, `targets`), `next` (cursor, absent on the last page) |
+| `health` | owner | none | See [Health report](#health-report) |
+| `health.cleanup` | owner | none | `deliveries`, `messages`, `activity`: how many rows the run deleted |
 
 `wait` blocks the connection. It returns `mail` as soon as the caller has pending mail (also mail that
 was pending when it was called) and `timeout` when the time runs out. The time is capped by
@@ -137,19 +140,70 @@ Each code belongs to one class; the CLI maps the class to its exit status.
 | `invalid_rule` | invalid input | A blank rule or grant field |
 | `invalid_page_limit`, `invalid_setting` | invalid input | A messaging limit the catalog cannot supply |
 | `no_recipients`, `subject_too_large`, `body_too_large` | invalid input | The message limits of [messaging](messaging.md) |
+| `too_many_recipients` | invalid input | A message with more distinct recipients than `wire.recipients` |
+| `recipient_inbox_full` | request | A recipient already has `quota.messages.assigned_per_principal` pending deliveries. Nothing is stored and nothing is deleted |
+| `too_many_waiters` | request | The caller or the service already has the most parked waits `limits.waits.principal` / `limits.waits.global` allow |
 | `expiry_in_the_past` | invalid input | A grant that has already expired |
 | `scope_not_allowed`, `subject_required`, `subject_not_allowed`, `invalid_value` | invalid input | A setting change the catalog refuses |
 | `internal` | internal | Anything unexpected. The detail goes to the service's standard error, never to the caller |
 
+## Activity log
+
+Every request the service handles leaves one record: the time from the service clock, the actor (`owner`,
+`unauthenticated` or `principal:<id>`), the operation, the outcome (`ok` or the error code) and the ids it touched.
+Refused and failed requests are recorded, and so are the owner credential bootstrap and its replacement. The record
+of a request that succeeds is written in the transaction of its effect; a request that fails leaves no effect and is
+recorded afterwards. A `wait` is recorded when it ends. A token, a subject, a body or the text of an unknown
+operation name is never recorded. The log is append-only; only retention deletes from it. The schema is in
+[schema](schema.md).
+
+## Retention and cleanup
+
+Cleanup runs every `cleanup.interval` seconds and when the owner sends `health.cleanup`. In one transaction it
+deletes acknowledged deliveries acknowledged more than `retention.messages.live` days ago, then the messages that
+have no delivery left, then activity older than `retention.activity.live` days. Pending mail is never deleted: a
+trigger in the database refuses it, independently of this code. A failed scheduled run is reported on standard error
+and tried again at the next interval. The service remembers the last run (time and counts, or that it failed) for the
+health report; the memory lasts as long as the process.
+
+## Health report
+
+`health` is for the owner and needs no agent session. Its result:
+
+| Field | Meaning |
+|---|---|
+| `started_at_ms` | When the service started |
+| `pending` | List of `principal` and `count`, for principals with pending mail |
+| `overdue_count` | All deliveries pending longer than `health.threshold` |
+| `overdue` | The oldest `messaging.page_size` of them: `message`, `recipient`, `age_seconds` |
+| `storage` | `used_bytes` (pages in use, not the free ones), `budget_bytes`, `warning_percent` |
+| `warnings` | `storage_budget` while `used_bytes` is at or past `warning_percent` of `budget_bytes`. It follows the current use, so it clears by itself when cleanup frees space |
+| `last_cleanup` | `null`, or `at_ms` and `ok`; when `ok`, also `deliveries`, `messages`, `activity` |
+
+`health.threshold` applies per recipient: the principal's own value, then its family's, then the global one. An
+acknowledged delivery is never overdue.
+
+## Limits
+
+| Limit | Key | Refusal |
+|---|---|---|
+| Recipients per message | `wire.recipients` | `too_many_recipients` |
+| Pending deliveries per recipient | `quota.messages.assigned_per_principal` | `recipient_inbox_full` |
+| Parked waits per principal and in all | `limits.waits.principal`, `limits.waits.global` | `too_many_waiters`. Only a wait that would park needs a place; one that finds mail at once does not |
+| Open connections | `limits.connections` | The new connection is closed without an answer |
+| Time to send a request | `service.request_deadline` | The connection is closed. It counts from the accept to the last byte of the request, so a client that trickles bytes cannot hold a thread. A parked `wait` is not cut off: its request was complete |
+
 ## Known limits
 
 - A parked `wait` authenticates when it starts; a token revoked meanwhile ends it only at its timeout.
-- The number of parked waiters and connections is not bounded yet (planned with the quotas).
-- `SO_RCVTIMEO` restarts on every received byte, so a client that sends one byte just inside the
-  request timeout can hold a connection thread; there is no overall request deadline or connection
-  cap yet (planned with the quotas).
+- The service answers nothing to a connection it refuses for being over `limits.connections`; the client sees
+  the connection closed.
+- Health scans every pending delivery older than the moment of the call to find the overdue ones, because the
+  threshold can differ per principal. The scan is bounded by the pending quota of each principal.
+- The memory of the last cleanup is lost when the service restarts.
 - `stop()` is bounded by the grace periods only while no request is stuck in the store; a request
   blocked on an external writer can delay the close by up to the busy timeout.
 - Any process of the same user that connects first after a fresh install can claim the owner
   credential with `owner.credential`; the installer should call it right after the first start.
-- The service reads `store.busy_timeout` and `service.frame_max` once, at start.
+- The service reads `store.busy_timeout`, `service.frame_max`, `cleanup.interval`, `limits.connections` and
+  `service.request_deadline` once, at start.

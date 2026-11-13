@@ -32,6 +32,9 @@ writable by group or others (mode 0600). Otherwise the command stops before it c
 | `rule add <from> <to>`, `rule remove <from> <to>`, `rule list` | owner | Family names |
 | `grant add` | owner | `--reader-principal <id>` or `--reader-family <name>`; `--target-principal <id>`, `--target-family <name>` or `--target-global`; `--expires-at-ms <n>`. Prints the grant id |
 | `grant revoke <id>`, `grant list` | owner | |
+| `activity` | owner | `--after <cursor>`, `--limit <n>`. Prints one `id`, `at_ms`, `actor`, `operation`, `outcome`, `targets` (comma separated) line per record (tab separated) and `next: <cursor>` when more follow |
+| `health` | owner | Prints the health report as text, or as the result document with `--json`. Works without any agent session |
+| `health cleanup` | owner | Runs cleanup now. Prints `deliveries: <n>`, `messages: <n>` and `activity: <n>`: what it deleted |
 | `setting get <key>` | any | Prints the value that applies to the caller |
 | `setting set <key> <value>` | owner | `--scope global\|family\|principal`, `--subject <name>`. The value is an integer, `true`/`false`, or text |
 | `send` | any | `--to <id>` (repeatable), `--subject`, and `--body <text>` or `--body-file <path>` |
@@ -49,6 +52,15 @@ With `--json` a result is printed as the JSON document of the [response](service
 failure as `{"error":{"code":"...","message":"..."}}` on standard error. The exit status is the same in
 both modes.
 
+## Health report
+
+`commline health` prints, in this order: `started:` (milliseconds since 1970), `storage:` (bytes used of the budget
+and the warning percent), one `warning: <name>` line per active warning (`storage_budget`), one `pending: <principal>`
+and count line per principal with pending mail, `overdue: <count>` followed by one `message`, `recipient`,
+`<age>s` line (tab separated) for each of the oldest overdue deliveries (at most `messaging.page_size`), and
+`last cleanup:` with its time and the three counts, `failed` after the time when the run failed, or `none` when no
+cleanup has run since the service started.
+
 ## Exit statuses
 
 The table is stable. A failure is never 0.
@@ -62,7 +74,7 @@ The table is stable. A failure is never 0.
 | 4 | authentication | `token_required`, `unknown_token`, `token_revoked`, `principal_disabled` |
 | 5 | permission | `owner_required`, `agent_required`, `recipient_refused` |
 | 6 | not found | `unknown_principal`, `unknown_recipient`, `message_unavailable`, `unknown_grant`, `unknown_key` |
-| 7 | invalid input | A value the service refused (names, rules, limits, settings, expiry) |
-| 8 | protocol | `bad_request`, `frame_too_large`, or an answer that is not a response |
+| 7 | invalid input | A value the service refused (names, rules, limits such as `too_many_recipients`, settings, expiry) |
+| 8 | protocol | `bad_request`, `frame_too_large`, `recipient_inbox_full`, `too_many_waiters`, or an answer that is not a response |
 | 9 | timed out | `wait` ended without mail |
 | 10 | token input | The token file is missing, unreadable, not private, or empty, or no token was supplied |

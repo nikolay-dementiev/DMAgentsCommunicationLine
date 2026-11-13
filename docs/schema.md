@@ -88,3 +88,25 @@ and accidental statements; they are not a defence against someone who holds the 
 Triggers on `deliveries`: a pending delivery cannot be deleted; a pending delivery can only change to `acknowledged`
 (its message and recipient never change); an acknowledged delivery cannot be changed. An acknowledged delivery may be
 deleted, which is how retention will reclaim it. Index `deliveries_by_recipient` serves the inbox.
+
+## Version 4
+
+The activity log. New and open until the v0.1 release.
+
+| Table | Columns | Rules |
+|---|---|---|
+| `activity` | `id` (integer primary key, autoincrement, so the order of the log), `at_ms`, `actor`, `operation`, `outcome`, `targets` | Append-only: a trigger refuses every UPDATE. A DELETE is refused too unless the gate is open. |
+| `activity_retention_gate` | `id` (always 1), `open` (0 or 1) | One row. Only the retention path opens it, inside the transaction that deletes, and closes it again before the commit. |
+
+- `actor` is `owner`, `unauthenticated` or `principal:<id>`. A request whose token is missing, unknown, revoked or
+  belongs to a disabled principal is `unauthenticated`.
+- `operation` is the protocol operation name, or `unknown` for a name the service does not know (the name itself is
+  never copied, because a client chose it).
+- `outcome` is `ok` or the error code of the refusal or failure.
+- `targets` is a JSON array of ids (message, principal, grant, rule families, setting key). It never holds a token,
+  a subject or a body. At most 16 targets of at most 128 characters each are kept.
+- Index `activity_by_time` serves retention.
+- An ordinary request writes its record in the transaction of its effect, so neither exists without the other. A
+  refused or failed request rolls back and is recorded afterwards. A `wait` is recorded when it ends.
+- Nested transactions use savepoints on the same connection, so cleanup can run inside the transaction of the owner
+  operation that asked for it.

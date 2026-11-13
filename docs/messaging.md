@@ -11,11 +11,14 @@ All of this is new and open until the v0.1 release.
 `send(token:to:subject:body:)` takes principal credentials only.
 
 - The recipients are made distinct, keeping the order given.
-- A message needs at least one recipient. The subject and the body must fit `messaging.subject_max` and
+- A message needs at least one recipient and at most `wire.recipients`. The subject and the body must fit `messaging.subject_max` and
   `messaging.body_max` (UTF-8 bytes). Nothing is stored when a check fails.
 - One transaction reads the sender, the recipients and the send rules, applies the send policy to every recipient,
   and stores the message with one pending delivery per recipient. A principal disabled, or a rule removed, after the
   caller was authenticated therefore still takes effect.
+- A recipient that already has `quota.messages.assigned_per_principal` pending deliveries refuses the send
+  (`recipient_inbox_full`). Nothing is stored for any recipient, and no old mail is deleted to make room; the sender
+  must wait until the recipient acknowledges some.
 - If one recipient is refused, nothing is stored and the error names that recipient. An unknown recipient is a
   different error from a refused one.
 - After the commit, the arrival interface is signalled for the recipients.
@@ -65,9 +68,8 @@ transaction. Separate processes use separate connections and rely on `BEGIN IMME
 
 ## Known limits of this layer
 
-- There is no quota on pending mail, no cap on recipients per message and no owner operation to expire pending mail:
-  pending mail is never deleted, so a misbehaving sender can grow the database. Quotas and the disk budget belong to the
-  retention and health step.
+- There is no owner operation to expire pending mail: pending mail is never deleted, so a recipient that never
+  acknowledges holds its place in its quota and in the database until the owner disables the principal.
 - The send error distinguishes an unknown recipient from a refused one, so a leaked principal id can be probed.
 - A parked wait authenticates once, when it starts.
 - Family names are compared as Swift strings and stored as given; only the owner creates them.
