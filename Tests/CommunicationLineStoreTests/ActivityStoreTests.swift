@@ -84,6 +84,23 @@ import Testing
     #expect(try raw.integer("SELECT count(*) FROM activity") == 1, "the record is still there")
   }
 
+  @Test func test_aRecord_cannotBeReplacedByAnInsert() throws {
+    let fixture = try Fixture()
+    try fixture.activity.append(fixture.entry("send"))
+    let raw = try fixture.identity.raw()
+
+    #expect(throws: RawDatabaseError.self, "a replacing insert is refused") {
+      try raw.execute(
+        """
+        INSERT OR REPLACE INTO activity (id, at_ms, actor, operation, outcome, targets)
+        VALUES (1, 99, 'forged', 'send', 'ok', '[]')
+        """)
+    }
+    #expect(
+      try raw.integer("SELECT count(*) FROM activity WHERE actor = 'forged'") == 0,
+      "the stored record was not rewritten")
+  }
+
   @Test func test_aFailedTransaction_takesItsRecordsWithIt() throws {
     let fixture = try Fixture()
 
