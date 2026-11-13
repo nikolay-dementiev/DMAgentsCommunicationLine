@@ -2,11 +2,15 @@ import CommunicationLineInstall
 import CommunicationLineWire
 import Foundation
 
-/// The commands that act on the host instead of asking the service: install and, later, uninstall.
+/// The commands that act on the host instead of asking the service: install, uninstall and the
+/// setup of an agent.
 /// Each returns the lines to print.
 public protocol HostCommands {
   /// Installs under `home`, or under the home folder of the caller when nil.
   func install(home: String?) throws -> [String]
+  /// Removes what the install wrote under `home`, or under the home folder of the caller when nil.
+  /// The store stays unless `deleteData` is set and no mail is pending.
+  func uninstall(home: String?, deleteData: Bool) throws -> [String]
   /// Creates an agent with the owner's token. Its files go inside `storeFolder`; a mail command for
   /// a client goes under `home`, or under the home folder of the caller when nil.
   func addAgent(storeFolder: String, home: String?, ownerToken: String, request: AgentRequest)
@@ -22,6 +26,7 @@ public struct SystemHostCommands: HostCommands {
   private let launchd: any LaunchdControl
   private let readiness: any ServiceReadiness
   private let connect: (String) -> any ServiceConnection
+  private let pendingMail: any PendingMailCounter
 
   public init(
     executableFolder: URL, userID: UInt32 = UInt32(geteuid()),
@@ -30,7 +35,8 @@ public struct SystemHostCommands: HostCommands {
     readiness: any ServiceReadiness = SocketReadiness(),
     connect: @escaping (String) -> any ServiceConnection = {
       SocketServiceConnection(socketPath: $0)
-    }
+    },
+    pendingMail: any PendingMailCounter = StorePendingMailCounter()
   ) {
     self.executableFolder = executableFolder
     self.userID = userID
@@ -38,6 +44,7 @@ public struct SystemHostCommands: HostCommands {
     self.launchd = launchd
     self.readiness = readiness
     self.connect = connect
+    self.pendingMail = pendingMail
   }
 
   public func install(home: String?) throws -> [String] {
@@ -54,6 +61,19 @@ public struct SystemHostCommands: HostCommands {
       report.ownerTokenIssued
         ? "owner token file: \(report.ownerTokenPath)"
         : "owner token file kept: \(report.ownerTokenPath)",
+    ]
+  }
+
+  public func uninstall(home: String?, deleteData: Bool) throws -> [String] {
+    let layout = HostLayout(
+      home: home.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? defaultHome)
+    let report = try Uninstaller(
+      layout: layout, userID: userID, launchd: launchd, pendingMail: pendingMail
+    ).uninstall(deleteData: deleteData)
+    return [
+      "uninstalled",
+      report.storeDeleted
+        ? "store deleted: \(report.storeFolder)" : "store kept: \(report.storeFolder)",
     ]
   }
 

@@ -57,7 +57,7 @@ public struct CommandRunner {
 
   // MARK: - Host commands
 
-  /// `install` and `agent add` work on the host. Returns nil for every other command.
+  /// `install`, `uninstall` and `agent add` work on the host. Returns nil for every other command.
   private func runHostCommand(_ invocation: Invocation) throws -> Int32? {
     let lines: () throws -> [String]
     switch invocation.words {
@@ -66,6 +66,14 @@ public struct CommandRunner {
         throw UsageError("usage: commline install [--home <folder>]")
       }
       lines = { try host.install(home: invocation.single("home")) }
+    case ["uninstall"]:
+      guard invocation.optionNames.isSubset(of: ["home", "delete-data"]) else {
+        throw UsageError("usage: commline uninstall [--home <folder>] [--delete-data]")
+      }
+      lines = {
+        try host.uninstall(
+          home: invocation.single("home"), deleteData: invocation.flags.contains("delete-data"))
+      }
     case ["agent", "add"]:
       let (store, request) = try agentRequest(invocation)
       let ownerToken = try readToken(invocation)
