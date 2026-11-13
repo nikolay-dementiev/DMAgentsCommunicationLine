@@ -99,4 +99,40 @@ struct WireMessageTests {
     #expect(WireErrorCode.badRequest.errorClass == .request, "a malformed request is request")
     #expect(WireErrorCode.internal.errorClass == .internal, "internal is internal")
   }
+
+  @Test func test_deeplyNestedFrames_areMalformedAndNeverOverflowTheStack() {
+    let depth = 200_000
+    let nested = String(repeating: "[", count: depth) + String(repeating: "]", count: depth)
+    let request = Data("{\"op\":\"x\",\"args\":{\"a\":\(nested)}}".utf8)
+    let response = Data("{\"ok\":true,\"result\":\(nested)}".utf8)
+
+    #expect(throws: WireError.malformed, "a request nested far past any real one is refused") {
+      _ = try WireCoding.decodeRequest(request)
+    }
+    #expect(throws: WireError.malformed, "a response nested far past any real one is refused") {
+      _ = try WireCoding.decodeResponse(response)
+    }
+  }
+
+  @Test func test_nestingInsideAString_doesNotCountAsDepth() throws {
+    let brackets = String(repeating: "[", count: 500)
+    let request = Data("{\"op\":\"x\",\"args\":{\"a\":\"\(brackets)\"}}".utf8)
+
+    let decoded = try WireCoding.decodeRequest(request)
+
+    #expect(decoded.operation == "x", "brackets inside a string are text, not structure")
+  }
+
+  @Test func test_nestingBeyondTheLimit_isRefusedWhileRealNestingStillPasses() throws {
+    func request(depth: Int) -> Data {
+      let nested = String(repeating: "[", count: depth) + String(repeating: "]", count: depth)
+      return Data("{\"op\":\"x\",\"args\":{\"a\":\(nested)}}".utf8)
+    }
+
+    #expect(throws: WireError.malformed, "64 levels is past the nesting limit") {
+      _ = try WireCoding.decodeRequest(request(depth: 64))
+    }
+    let allowed = try WireCoding.decodeRequest(request(depth: 8))
+    #expect(allowed.operation == "x", "a few levels of nesting are ordinary")
+  }
 }
