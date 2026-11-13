@@ -66,13 +66,17 @@ but `owner.token` is missing, the install stops with an error and does not repla
 
 `commline uninstall` stops the service (`launchctl bootout`), then removes exactly what the manifest lists:
 the plist, the programs, the bundles, the command files and the manifest itself, which goes last so that an
-interrupted run can be repeated. It never removes a path the manifest does not list, and it refuses a
-manifest that names a path outside the home folder. It keeps the store folder, with the database and all
+interrupted run can be repeated. It never removes a path the manifest does not list. The manifest is only a
+list: uninstall refuses (and removes nothing) when an entry is not one the install writes (the programs, the plist,
+a `commline-*.md` command, a `CommunicationLine_*.bundle` under the program folder, the store folder) or is a
+symbolic link. It keeps the store folder, with the database and all
 tokens, and prints its path.
 
 `--delete-data` also removes the store folder, but only when no delivery is pending. It counts the pending
 mail before it changes anything and again after the service has stopped. If any mail is pending it refuses,
-prints the count and removes nothing. Acknowledge the mail first, or keep the data.
+prints the count and removes nothing. Acknowledge the mail first, or keep the data. If mail arrives while the service is stopping, the
+command refuses after the service was stopped; run `commline install` to start it again. The store is removed
+before the manifest, so a failed `--delete-data` can be repeated.
 
 Installing again on a kept store reuses the database and the owner token.
 

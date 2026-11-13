@@ -21,6 +21,9 @@ service and writes files; it prints the path of each file and never a token.
    The file is added to the install manifest, so `uninstall` removes it. `agent add` needs an install for
    this. It never overwrites a file that exists; it stops before creating anything.
 
+If a file cannot be written after the principal was created, the principal is disabled and the error says so.
+`--name` and `--family` must not contain control characters or backticks.
+
 Neither text contains a token. They name the token file, and every command in them reads the token from it.
 
 ## The instruction file
