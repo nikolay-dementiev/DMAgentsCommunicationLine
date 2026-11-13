@@ -7,6 +7,10 @@ import Foundation
 public protocol HostCommands {
   /// Installs under `home`, or under the home folder of the caller when nil.
   func install(home: String?) throws -> [String]
+  /// Creates an agent with the owner's token. Its files go inside `storeFolder`; a mail command for
+  /// a client goes under `home`, or under the home folder of the caller when nil.
+  func addAgent(storeFolder: String, home: String?, ownerToken: String, request: AgentRequest)
+    throws -> [String]
 }
 
 /// The real host: the account that runs `commline`, its launchd, and the programs next to the
@@ -51,5 +55,22 @@ public struct SystemHostCommands: HostCommands {
         ? "owner token file: \(report.ownerTokenPath)"
         : "owner token file kept: \(report.ownerTokenPath)",
     ]
+  }
+
+  public func addAgent(
+    storeFolder: String, home: String?, ownerToken: String, request: AgentRequest
+  )
+    throws -> [String]
+  {
+    let layout = HostLayout(
+      home: home.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? defaultHome)
+    let report = try AgentSetup(
+      layout: layout, storeFolder: URL(fileURLWithPath: storeFolder, isDirectory: true),
+      connect: connect
+    ).add(request, ownerToken: ownerToken)
+    return [
+      "agent: \(report.principalID)", "token file: \(report.tokenFile)",
+      "instructions: \(report.instructionFile)",
+    ] + (report.commandFile.map { ["command: \($0)"] } ?? [])
   }
 }

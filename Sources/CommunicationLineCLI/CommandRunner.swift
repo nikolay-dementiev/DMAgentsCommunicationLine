@@ -1,3 +1,4 @@
+import CommunicationLineInstall
 import CommunicationLineWire
 import Foundation
 
@@ -51,20 +52,64 @@ public struct CommandRunner {
 
   // MARK: - Host commands
 
-  /// `install` works on the host and needs neither a service nor a token. Returns nil for every
-  /// other command.
+  /// `install` and `agent add` work on the host. Returns nil for every other command.
   private func runHostCommand(_ invocation: Invocation) throws -> Int32? {
-    guard invocation.words.first == "install" else { return nil }
-    guard invocation.words.count == 1, invocation.optionNames.isSubset(of: ["home"]) else {
-      throw UsageError("usage: commline install [--home <folder>]")
+    let lines: () throws -> [String]
+    switch invocation.words {
+    case ["install"]:
+      guard invocation.optionNames.isSubset(of: ["home"]) else {
+        throw UsageError("usage: commline install [--home <folder>]")
+      }
+      lines = { try host.install(home: invocation.single("home")) }
+    case ["agent", "add"]:
+      let (store, request) = try agentRequest(invocation)
+      let ownerToken = try readToken(invocation)
+      lines = {
+        try host.addAgent(
+          storeFolder: store, home: invocation.single("home"), ownerToken: ownerToken,
+          request: request)
+      }
+    default:
+      return nil
     }
     do {
-      try host.install(home: invocation.single("home")).forEach(standardOutput)
+      try lines().forEach(standardOutput)
     } catch {
-      standardError("commline: install failed: \(error)")
+      standardError("commline: \(invocation.words.joined(separator: " ")) failed: \(error)")
       return CommandExitStatus.failure.rawValue
     }
     return CommandExitStatus.success.rawValue
+  }
+
+  private func agentRequest(_ invocation: Invocation) throws -> (store: String, AgentRequest) {
+    let usage =
+      "usage: commline agent add --store <folder> --family <f> --role head|agent "
+      + "--name <n> [--client claude-code] [--home <folder>]"
+    guard
+      invocation.optionNames.isSubset(of: [
+        "store", "token-file", "family", "role", "name", "client", "home",
+      ])
+    else { throw UsageError(usage) }
+    guard let store = invocation.single("store") else {
+      throw UsageError("--store <folder> is required: the agent's files go inside it")
+    }
+    let role = try CommandCatalog.required(invocation, "role")
+    guard role == "head" || role == "agent" else {
+      throw UsageError("--role must be head or agent")
+    }
+    var client: AgentClient?
+    if let name = invocation.single("client") {
+      guard let known = AgentClient(rawValue: name) else {
+        throw UsageError("--client must be claude-code")
+      }
+      client = known
+    }
+    return (
+      store,
+      AgentRequest(
+        family: try CommandCatalog.required(invocation, "family"), role: role,
+        name: try CommandCatalog.required(invocation, "name"), client: client)
+    )
   }
 
   // MARK: - Steps
