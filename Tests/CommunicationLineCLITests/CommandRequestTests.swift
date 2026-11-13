@@ -153,4 +153,14 @@ struct CommandRequestTests {
     #expect(
       page.arguments == ["after": .integer(40), "limit": .integer(10)], "cursor and page size")
   }
+
+  @Test func test_health_askForTheReportAndForACleanup() throws {
+    let report = try sent(["health"])
+    let cleanup = try sent(["health", "cleanup"])
+
+    #expect(report.operation == "health", "the report")
+    #expect(report.arguments.isEmpty, "it takes no argument")
+    #expect(cleanup.operation == "health.cleanup", "the owner runs cleanup now")
+    #expect(cleanup.arguments.isEmpty, "it takes no argument")
+  }
 }

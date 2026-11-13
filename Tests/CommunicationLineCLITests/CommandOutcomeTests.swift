@@ -210,4 +210,77 @@ struct CommandOutcomeTests {
         + "8\t1800000000500\tunauthenticated\tinbox\tunknown_token\t\nnext: 8\n",
       "one tab-separated line per record, then the cursor")
   }
+
+  @Test func test_health_printsTheReportAsText() {
+    let report = WireValue.object([
+      "started_at_ms": .integer(1_800_000_000_000),
+      "pending": .array([.object(["principal": .string("p2"), "count": .integer(3)])]),
+      "overdue_count": .integer(2),
+      "overdue": .array([
+        .object([
+          "message": .string("m1"), "recipient": .string("p2"), "age_seconds": .integer(1860),
+        ])
+      ]),
+      "storage": .object([
+        "used_bytes": .integer(4096), "budget_bytes": .integer(5000),
+        "warning_percent": .integer(80),
+      ]),
+      "warnings": .array([.string("storage_budget")]),
+      "last_cleanup": .object([
+        "at_ms": .integer(1_800_000_100_000), "ok": .bool(true), "deliveries": .integer(1),
+        "messages": .integer(1), "activity": .integer(0),
+      ]),
+    ])
+
+    let outcome = run(["health"]) { _ in .success(report) }
+
+    #expect(outcome.status == 0, "the report is shown")
+    #expect(
+      outcome.harness.standardOutput
+        == """
+        started: 1800000000000
+        storage: 4096 of 5000 bytes, warning at 80%
+        warning: storage_budget
+        pending: p2\t3
+        overdue: 2
+        m1\tp2\t1860s
+        last cleanup: 1800000100000 deliveries=1 messages=1 activity=0
+
+        """, "one line per fact, overdue entries under the count")
+  }
+
+  @Test func test_health_withoutACleanup_saysSo_andAFailedOneIsShownAsFailed() {
+    let none = WireValue.object(Self.minimalHealth(lastCleanup: .null))
+    let failed = WireValue.object(
+      Self.minimalHealth(lastCleanup: .object(["at_ms": .integer(7), "ok": .bool(false)])))
+
+    let noneOutcome = run(["health"]) { _ in .success(none) }
+    let failedOutcome = run(["health"]) { _ in .success(failed) }
+
+    #expect(noneOutcome.harness.standardOutput.hasSuffix("last cleanup: none\n"), "no cleanup yet")
+    #expect(
+      failedOutcome.harness.standardOutput.hasSuffix("last cleanup: 7 failed\n"), "a failed run")
+  }
+
+  @Test func test_healthCleanup_printsWhatWasDeleted() {
+    let outcome = run(["health", "cleanup"]) { _ in
+      .success(
+        .object(["deliveries": .integer(4), "messages": .integer(3), "activity": .integer(9)]))
+    }
+
+    #expect(
+      outcome.harness.standardOutput == "deliveries: 4\nmessages: 3\nactivity: 9\n",
+      "the three counts")
+  }
+
+  private static func minimalHealth(lastCleanup: WireValue) -> [String: WireValue] {
+    [
+      "started_at_ms": .integer(1), "pending": .array([]), "overdue_count": .integer(0),
+      "overdue": .array([]),
+      "storage": .object([
+        "used_bytes": .integer(1), "budget_bytes": .integer(2), "warning_percent": .integer(80),
+      ]),
+      "warnings": .array([]), "last_cleanup": lastCleanup,
+    ]
+  }
 }
