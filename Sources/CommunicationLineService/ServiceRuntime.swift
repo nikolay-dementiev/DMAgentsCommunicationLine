@@ -21,7 +21,6 @@ public final class ServiceRuntime {
   public let dispatcher: RequestDispatcher
   /// The largest frame the service reads or writes, from the `service.frame_max` setting at start.
   public let frameMaximum: Int
-  /// The hook the blocking waits of the dispatcher park on.
   private let store: SQLiteStore
 
   private init(dispatcher: RequestDispatcher, frameMaximum: Int, store: SQLiteStore) {
@@ -58,6 +57,11 @@ public final class ServiceRuntime {
       identity: identity, rights: rights, settings: settings, messages: messages,
       reporter: reporter)
     return ServiceRuntime(dispatcher: dispatcher, frameMaximum: frameMaximum, store: store)
+  }
+
+  /// Closes the database. The dispatcher answers `internal` to anything that arrives later.
+  public func close() {
+    store.close()
   }
 
   private static func integerDefault(of key: String, in catalog: SettingsCatalog) throws -> Int64 {

@@ -81,6 +81,7 @@ public final class ServiceHost: @unchecked Sendable {
     while (!acceptLoopEnded || !activeConnections.isEmpty) && state.wait(until: deadline) {}
     state.broadcast()
     state.unlock()
+    runtime.close()
     lock.release()
   }
 
