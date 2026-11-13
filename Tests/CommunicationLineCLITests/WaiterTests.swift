@@ -45,6 +45,16 @@ struct WaiterTests {
       }, "every cycle uses the service's own wait time")
   }
 
+  @Test func test_untilMail_aSocketPathThatIsTooLong_isFinalAndNotRetried() {
+    let harness = CLIHarness(answer: { _ in throw ServiceConnectionError.pathTooLong("/long") })
+
+    let status = harness.run(["wait", "--until-mail", "--socket", "/long"])
+
+    #expect(status == CommandExitStatus.failure.rawValue, "it ends with an error")
+    #expect(harness.connectedSockets.count == 1, "it asked once")
+    #expect(harness.pauses.isEmpty, "and did not pause to try again")
+  }
+
   @Test func test_untilMail_survivesAServiceRestart() {
     let outcome = waiter([Self.timeout, Self.down, Self.garbled, Self.down, Self.mail])
 

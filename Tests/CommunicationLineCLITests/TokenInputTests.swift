@@ -13,6 +13,32 @@ private func tokenFile(mode: mode_t, contents: String = "tok-1234\n") throws -> 
 }
 
 struct TokenInputTests {
+  @Test func test_aNamedPipeAsTokenFile_isRefusedInsteadOfHanging() throws {
+    let path = "/tmp/clt-" + UUID().uuidString.prefix(8).lowercased()
+    #expect(mkfifo(path, 0o600) == 0, "the pipe was created")
+    defer { unlink(path) }
+    let finished = DispatchSemaphore(value: 0)
+    nonisolated(unsafe) var failure: (any Error)?
+    Thread.detachNewThread {
+      do { _ = try TokenReader(standardInput: { nil }).read(tokenFile: path) } catch {
+        failure = error
+      }
+      finished.signal()
+    }
+
+    let answered = finished.wait(timeout: .now() + 2) == .success
+    if !answered {
+      // Free the blocked open so the thread ends.
+      let rescue = open(path, O_RDWR)
+      if rescue >= 0 { close(rescue) }
+      _ = finished.wait(timeout: .now() + 2)
+    }
+
+    #expect(answered, "the reader answers without waiting for a writer")
+    #expect(
+      (failure as? TokenInputError) == .notRegularFile(path), "and says it is not a regular file")
+  }
+
   private func reader(stdin: String? = nil) -> TokenReader {
     TokenReader(standardInput: { stdin })
   }

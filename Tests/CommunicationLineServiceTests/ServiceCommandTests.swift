@@ -1,5 +1,6 @@
 import CommunicationLineService
 import Foundation
+import SQLite3
 import Testing
 
 private final class Lines: @unchecked Sendable {
@@ -10,6 +11,24 @@ private final class Lines: @unchecked Sendable {
 }
 
 struct ServiceCommandTests {
+  @Test func test_aStoredBusyTimeout_isAppliedAtStart() throws {
+    let fixture = try ServiceFixture()
+    #expect(fixture.runtime.busyTimeoutMilliseconds == 5000, "the catalog default without a value")
+    var handle: OpaquePointer?
+    #expect(
+      sqlite3_open(fixture.folder.appendingPathComponent("commline.sqlite").path, &handle) == 0)
+    #expect(
+      sqlite3_exec(
+        handle,
+        "INSERT INTO settings_values (key, scope, subject, value) VALUES ('store.busy_timeout','global','','60000')",
+        nil, nil, nil) == 0, "the override is stored")
+    sqlite3_close(handle)
+
+    let restarted = try ServiceRuntime.open(storeFolder: fixture.folder, clock: fixture.clock)
+
+    #expect(restarted.busyTimeoutMilliseconds == 60000, "the stored value wins after a restart")
+  }
+
   @Test func test_withoutAFolder_isAUsageError() {
     let lines = Lines()
 
