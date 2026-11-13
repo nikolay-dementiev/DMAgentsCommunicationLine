@@ -28,13 +28,16 @@ final class CLIHarness: @unchecked Sendable {
   private(set) var standardError = ""
   private(set) var connectedSockets: [String] = []
   private var standardInput: String?
+  private let encode: @Sendable (WireValue) throws -> Data
 
   init(
     stdin: String? = nil,
+    encode: @escaping @Sendable (WireValue) throws -> Data = { try WireCoding.encode($0) },
     answer: @escaping @Sendable (WireRequest) throws -> WireResponse = { _ in .success() }
   ) {
     connection = FakeConnection(answer: answer)
     standardInput = stdin
+    self.encode = encode
   }
 
   func run(_ arguments: [String]) -> Int32 {
@@ -45,7 +48,7 @@ final class CLIHarness: @unchecked Sendable {
       },
       tokenReader: TokenReader(standardInput: { self.standardInput }),
       standardOutput: { self.standardOutput += $0 + "\n" },
-      standardError: { self.standardError += $0 + "\n" })
+      standardError: { self.standardError += $0 + "\n" }, encode: encode)
     return runner.run(arguments)
   }
 }

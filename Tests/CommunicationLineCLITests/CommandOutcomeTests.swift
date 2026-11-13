@@ -160,6 +160,17 @@ struct CommandOutcomeTests {
     #expect(read.harness.standardOutput.hasSuffix("\nline one\nline two\n"), "the body follows")
   }
 
+  @Test func test_json_whenTheAnswerCannotBeEncoded_failsVisiblyInsteadOfPrintingNull() {
+    struct Unencodable: Error {}
+    let harness = CLIHarness(encode: { _ in throw Unencodable() })
+
+    let status = harness.run(["--store", "/tmp/cl-store", "--json", "owner", "init"])
+
+    #expect(status == CommandExitStatus.failure.rawValue, "an answer that cannot be printed fails")
+    #expect(harness.standardOutput.isEmpty, "nothing that looks like a result is printed")
+    #expect(harness.standardError.contains("cannot encode"), "the reason is on standard error")
+  }
+
   @Test func test_json_printsTheResultAsIs_andFailuresAsJsonOnStandardError() throws {
     let result = WireValue.object(["id": .string("m1")])
     let ok = run(["--json", "send", "--to", "p", "--subject", "s", "--body", "b"]) { _ in
