@@ -54,6 +54,10 @@ let package = Package(
       dependencies: ["CommunicationLineWire"]
     ),
     .testTarget(
+      name: "CommunicationLineEndToEndTests",
+      dependencies: ["commline", "commline-service"]
+    ),
+    .testTarget(
       name: "CommunicationLineDomainTests",
       dependencies: ["CommunicationLineDomain"]
     ),
