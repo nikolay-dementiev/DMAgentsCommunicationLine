@@ -33,6 +33,15 @@ final class SQLiteDatabase {
 
   deinit { sqlite3_close(handle) }
 
+  /// Closes the connection, which folds the write-ahead log into the database file. Later use fails
+  /// with an error. Calling it again does nothing.
+  func close() {
+    lock.lock()
+    defer { lock.unlock() }
+    sqlite3_close(handle)
+    handle = nil
+  }
+
   func setBusyTimeout(milliseconds: Int) throws {
     let code = sqlite3_busy_timeout(handle, Int32(clamping: milliseconds))
     guard code == SQLITE_OK else { throw failure("busy timeout", code) }

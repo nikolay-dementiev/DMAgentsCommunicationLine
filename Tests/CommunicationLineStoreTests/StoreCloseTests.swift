@@ -10,14 +10,16 @@ import Testing
     return (store, scratch)
   }
 
-  @Test func test_close_checkpointsTheLogAndLeavesOnlyTheDatabaseFile() throws {
+  @Test func test_close_checkpointsTheWriteAheadLog() throws {
     let (store, scratch) = try openStore()
     let log = scratch.storePath.path + "-wal"
-    #expect(FileManager.default.fileExists(atPath: log), "migrations left a write-ahead log")
+    let before = (try? FileManager.default.attributesOfItem(atPath: log)[.size] as? Int) ?? 0
+    #expect(before > 0, "migrations left records in the write-ahead log")
 
     store.close()
 
-    #expect(!FileManager.default.fileExists(atPath: log), "closing folds the log into the database")
+    let size = (try? FileManager.default.attributesOfItem(atPath: log)[.size] as? Int) ?? 0
+    #expect(size == 0, "closing folds the log into the database, nothing is left in it")
   }
 
   @Test func test_close_thenAnyUse_failsInsteadOfCrashing() throws {

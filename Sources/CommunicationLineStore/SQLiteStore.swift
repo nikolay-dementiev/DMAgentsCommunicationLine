@@ -83,6 +83,11 @@ public final class SQLiteStore {
     }
   }
 
+  /// Closes the database. Every store built on this one fails from now on, so call it last.
+  public func close() {
+    database.close()
+  }
+
   public func schemaVersion() throws -> Int {
     try Self.userVersion(of: database)
   }
