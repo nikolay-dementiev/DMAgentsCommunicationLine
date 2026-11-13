@@ -427,20 +427,37 @@ struct ConnectionLimitTests {
     #expect(Date().timeIntervalSince(started) < 3, "it did so near the deadline")
   }
 
-  @Test func test_aRequestThatArrivesInTime_isAnswered_andLaterDeadlinesHarmNoOneElse() throws {
+  @Test func test_aRequestThatArrivesInTime_isAnswered_evenWhenItsAnswerComesAfterTheDeadline()
+    throws
+  {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
     let host = try ServiceHost.start(storeFolder: folder, requestDeadline: 0.4)
     defer { host.stop() }
+    func call(_ operation: String, token: String? = nil, _ arguments: [String: WireValue] = [:])
+      throws -> WireResponse
+    {
+      try SocketExchange.call(
+        socketPath: host.socketPath,
+        request: WireRequest(token: token, operation: operation, arguments: arguments),
+        maximumFrame: host.frameMaximum)
+    }
+    func field(_ response: WireResponse, _ key: String) throws -> String {
+      guard case .object(let fields)? = response.result, case .string(let value)? = fields[key]
+      else { throw POSIXError(.EIO) }
+      return value
+    }
+    let owner = try field(try call("owner.credential"), "token")
+    let agent = try field(
+      try call(
+        "principal.create", token: owner,
+        ["family": .string("A"), "role": .string("agent"), "name": .string("alice")]), "id")
+    let token = try field(
+      try call("credential.issue", token: owner, ["principal": .string(agent)]), "token")
 
-    #expect(ownerCredentialSucceeds(host), "a normal request is answered")
-    Thread.sleep(forTimeInterval: 0.6)
-    let later = try SocketExchange.call(
-      socketPath: host.socketPath, request: WireRequest(token: nil, operation: "no.such.op"),
-      maximumFrame: host.frameMaximum)
+    // The wait has been read in full long before the deadline and answers well after it.
+    let answer = try call("wait", token: token, ["timeout": .integer(1)])
 
-    #expect(
-      later.failure?.code == .badRequest,
-      "the deadline of the first connection did not touch the next one")
+    #expect(answer.isSuccess, "the deadline covers the sending of a request, not its answer")
   }
 }

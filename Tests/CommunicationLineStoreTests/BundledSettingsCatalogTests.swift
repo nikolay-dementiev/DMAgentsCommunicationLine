@@ -27,6 +27,8 @@ import Testing
         "quota.messages.assigned_per_principal": .integer(100_000),
         "limits.waits.global": .integer(128),
         "limits.waits.principal": .integer(2),
+        "limits.connections": .integer(256),
+        "service.request_deadline": .integer(10),
         "service.frame_max": .integer(2_097_152),
       ], "the shipped keys and defaults")
   }

@@ -24,13 +24,20 @@ public final class ServiceRuntime {
   /// How often the service runs cleanup, from the `cleanup.interval` setting at start.
   public let cleanupInterval: TimeInterval
   public let cleanup: CleanupRunner
+  /// The most connections open at once, from `limits.connections` at start.
+  public let connectionLimit: Int
+  /// How long a client has to send its request, from `service.request_deadline` at start.
+  public let requestDeadline: TimeInterval
   private let store: SQLiteStore
   private let arrival: InProcessMailArrival
 
   private init(
     dispatcher: RequestDispatcher, frameMaximum: Int, cleanupInterval: TimeInterval,
-    cleanup: CleanupRunner, store: SQLiteStore, arrival: InProcessMailArrival
+    cleanup: CleanupRunner, connectionLimit: Int, requestDeadline: TimeInterval,
+    store: SQLiteStore, arrival: InProcessMailArrival
   ) {
+    self.connectionLimit = connectionLimit
+    self.requestDeadline = requestDeadline
     self.cleanupInterval = cleanupInterval
     self.cleanup = cleanup
     self.arrival = arrival
@@ -80,7 +87,9 @@ public final class ServiceRuntime {
       activity: activity, cleanup: cleanup, transactions: transactions, reporter: reporter)
     return ServiceRuntime(
       dispatcher: dispatcher, frameMaximum: frameMaximum,
-      cleanupInterval: try cleanupInterval(settings), cleanup: cleanup, store: store,
+      cleanupInterval: try positiveSeconds("cleanup.interval", settings), cleanup: cleanup,
+      connectionLimit: Int(try positiveSeconds("limits.connections", settings)),
+      requestDeadline: try positiveSeconds("service.request_deadline", settings), store: store,
       arrival: arrival)
   }
 
@@ -94,11 +103,14 @@ public final class ServiceRuntime {
     store.close()
   }
 
-  private static func cleanupInterval(_ settings: SettingsService) throws -> TimeInterval {
-    guard case .integer(let seconds) = try settings.serviceValue(of: "cleanup.interval"),
-      seconds >= 1
-    else { throw ServiceRuntimeError.missingSetting("cleanup.interval") }
-    return TimeInterval(seconds)
+  /// A catalog integer that must be at least one, as a number.
+  private static func positiveSeconds(_ key: String, _ settings: SettingsService) throws
+    -> TimeInterval
+  {
+    guard case .integer(let value) = try settings.serviceValue(of: key), value >= 1 else {
+      throw ServiceRuntimeError.missingSetting(key)
+    }
+    return TimeInterval(value)
   }
 
   private static func integerDefault(of key: String, in catalog: SettingsCatalog) throws -> Int64 {

@@ -28,17 +28,26 @@ public final class ServiceHost: @unchecked Sendable {
   private let requestTimeout: TimeInterval
   private let reporter: any FailureReporter
   private let cleanupInterval: TimeInterval
+  private let connectionLimit: Int
+  private let requestDeadline: TimeInterval
   private let state = NSCondition()
   private var isStopped = false
   private var isFinished = false
   private var activeConnections: Set<Int32> = []
+  /// Connections that have not finished sending their request, by descriptor, with the identity of
+  /// the connection so that a late deadline never touches a descriptor that was reused.
+  private var awaitingRequest: [Int32: UInt64] = [:]
+  private var connectionCounter: UInt64 = 0
 
   private init(
     runtime: ServiceRuntime, lock: InstanceLock, listener: Int32, socketPath: String,
     peerReader: any PeerCredentialReader, requestTimeout: TimeInterval,
-    reporter: any FailureReporter, cleanupInterval: TimeInterval
+    reporter: any FailureReporter, cleanupInterval: TimeInterval, connectionLimit: Int,
+    requestDeadline: TimeInterval
   ) {
     self.cleanupInterval = cleanupInterval
+    self.connectionLimit = connectionLimit
+    self.requestDeadline = requestDeadline
     self.runtime = runtime
     self.lock = lock
     self.listener = listener
@@ -54,7 +63,8 @@ public final class ServiceHost: @unchecked Sendable {
     storeFolder: URL, peerReader: any PeerCredentialReader = SystemPeerCredentialReader(),
     requestTimeout: TimeInterval = 10, reporter: any FailureReporter = StandardErrorReporter(),
     userID: UInt32 = UInt32(geteuid()), clock: (any WallClock)? = nil,
-    cleanupInterval: TimeInterval? = nil
+    cleanupInterval: TimeInterval? = nil, connectionLimit: Int? = nil,
+    requestDeadline: TimeInterval? = nil
   ) throws -> ServiceHost {
     try StoreFolder.prepare(storeFolder, waitingUpTo: 5000)
     let lock = try InstanceLock(path: storeFolder.appendingPathComponent(lockName).path)
@@ -66,7 +76,9 @@ public final class ServiceHost: @unchecked Sendable {
     let host = ServiceHost(
       runtime: runtime, lock: lock, listener: listener, socketPath: path, peerReader: peerReader,
       requestTimeout: requestTimeout, reporter: reporter,
-      cleanupInterval: cleanupInterval ?? runtime.cleanupInterval)
+      cleanupInterval: cleanupInterval ?? runtime.cleanupInterval,
+      connectionLimit: connectionLimit ?? runtime.connectionLimit,
+      requestDeadline: requestDeadline ?? runtime.requestDeadline)
     Thread.detachNewThread { host.acceptLoop() }
     Thread.detachNewThread { host.cleanupLoop() }
     return host
@@ -181,8 +193,19 @@ public final class ServiceHost: @unchecked Sendable {
         close(connection)
         return
       }
+      guard activeConnections.count < connectionLimit else {
+        state.unlock()
+        close(connection)
+        continue
+      }
       activeConnections.insert(connection)
+      connectionCounter += 1
+      let identity = connectionCounter
+      awaitingRequest[connection] = identity
       state.unlock()
+      DispatchQueue.global().asyncAfter(deadline: .now() + requestDeadline) {
+        self.expireRequest(of: connection, identity: identity)
+      }
       Thread.detachNewThread { self.serve(connection) }
     }
   }
@@ -216,6 +239,7 @@ public final class ServiceHost: @unchecked Sendable {
       // the same lock, so it can never touch a descriptor number that was closed and reused.
       state.lock()
       activeConnections.remove(descriptor)
+      awaitingRequest[descriptor] = nil
       state.broadcast()
       state.unlock()
       stream.close()
@@ -225,7 +249,9 @@ public final class ServiceHost: @unchecked Sendable {
     let codec = FrameCodec(maximumSize: frameMaximum)
     let response: WireResponse
     do {
-      guard let payload = try codec.readFrame(from: stream) else { return }
+      let payload = try codec.readFrame(from: stream)
+      requestFinished(descriptor)
+      guard let payload else { return }
       response = answer(payload)
     } catch let error as FrameError {
       response = failure(for: error)
@@ -237,6 +263,23 @@ public final class ServiceHost: @unchecked Sendable {
       return
     }
     send(response, over: stream, codec: codec)
+  }
+
+  private func requestFinished(_ descriptor: Int32) {
+    state.lock()
+    awaitingRequest[descriptor] = nil
+    state.unlock()
+  }
+
+  /// Cuts a connection that is still sending its request when the deadline passes. It runs under
+  /// the state lock, like the removal in `serve`, so it never reaches a closed or reused descriptor.
+  private func expireRequest(of descriptor: Int32, identity: UInt64) {
+    state.lock()
+    defer { state.unlock() }
+    guard awaitingRequest[descriptor] == identity, activeConnections.contains(descriptor) else {
+      return
+    }
+    shutdown(descriptor, SHUT_RDWR)
   }
 
   private func isOwnUser(_ descriptor: Int32) -> Bool {
