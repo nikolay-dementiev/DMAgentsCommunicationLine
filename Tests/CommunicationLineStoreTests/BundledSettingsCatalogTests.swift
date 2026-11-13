@@ -41,10 +41,10 @@ import Testing
         == SettingRange(minimum: 1, maximum: 100), "page size is 1..100")
     #expect(
       catalog.definition(for: "messaging.subject_max")?.range
-        == SettingRange(minimum: 1, maximum: 4096), "subject limit is 1..4096")
+        == SettingRange(minimum: 1, maximum: 512), "subject limit is capped at 512")
     #expect(
       catalog.definition(for: "messaging.body_max")?.range
-        == SettingRange(minimum: 1, maximum: 1_048_576), "body limit is 1..1048576")
+        == SettingRange(minimum: 1, maximum: 262_144), "body limit is capped at 262144")
     #expect(
       catalog.definition(for: "health.threshold")?.scopes == [.global, .family, .principal],
       "the overdue threshold is settable per family and per principal")
