@@ -53,6 +53,33 @@ struct HostCommandTests {
     }
   }
 
+  // MARK: - owner recover
+
+  @Test func test_ownerRecover_runsTheRecoveryOnTheHostWithoutAnyToken() {
+    let harness = CLIHarness(host: FakeHost(result: .success(["owner token file: /p"])))
+
+    let status = harness.run(["owner", "recover", "--home", "/tmp/elsewhere"])
+
+    #expect(status == 0, "a finished recovery exits 0")
+    #expect(harness.host.recoveries == ["/tmp/elsewhere"], "the home folder as given")
+    #expect(harness.standardOutput == "owner token file: /p\n", "the path, never the token")
+    #expect(harness.connectedSockets.isEmpty, "the service is not asked: it is stopped meanwhile")
+  }
+
+  @Test func test_ownerRecover_takesNoTokenAndNoStoreOption() {
+    for arguments in [
+      ["owner", "recover", "--token-file", "/x"], ["owner", "recover", "--store", "/s"],
+      ["owner", "recover", "extra"],
+    ] {
+      let harness = CLIHarness()
+
+      let status = harness.run(arguments)
+
+      #expect(status == CommandExitStatus.usage.rawValue, "\(arguments) is a usage error")
+      #expect(harness.host.recoveries.isEmpty, "\(arguments) recovered nothing")
+    }
+  }
+
   // MARK: - uninstall
 
   @Test func test_uninstall_runsTheUninstallerAndPrintsWhatItReports() {

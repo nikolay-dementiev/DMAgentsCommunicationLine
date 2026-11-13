@@ -41,7 +41,10 @@ let package = Package(
     ),
     .testTarget(
       name: "CommunicationLineInstallTests",
-      dependencies: ["CommunicationLineInstall", "CommunicationLineWire"]
+      dependencies: [
+        "CommunicationLineInstall", "CommunicationLineWire", "CommunicationLineStore",
+        "CommunicationLineApplication", "CommunicationLineDomain",
+      ]
     ),
     .target(
       name: "CommunicationLineCLI",

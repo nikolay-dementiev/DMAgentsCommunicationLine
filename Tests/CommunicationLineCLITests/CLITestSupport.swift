@@ -44,6 +44,13 @@ final class FakeHost: HostCommands, @unchecked Sendable {
   }
   private(set) var uninstalls: [UninstallCall] = []
 
+  private(set) var recoveries: [String?] = []
+
+  func recoverOwner(home: String?) throws -> [String] {
+    lock.withLock { recoveries.append(home) }
+    return try result.get()
+  }
+
   func uninstall(home: String?, deleteData: Bool) throws -> [String] {
     lock.withLock { uninstalls.append(UninstallCall(home: home, deleteData: deleteData)) }
     return try result.get()
