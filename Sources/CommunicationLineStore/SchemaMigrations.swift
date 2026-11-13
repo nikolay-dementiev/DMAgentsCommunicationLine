@@ -1,6 +1,6 @@
 /// The numbered schema steps of the product. Released versions never change; add a new step instead.
 public enum SchemaMigrations {
-  public static let all: [Migration] = [version1, version2, version3, version4]
+  public static let all: [Migration] = [version1, version2, version3, version4, version5]
 
   /// Version 1: stored settings and their append-only audit trail.
   private static let version1 = Migration(
@@ -216,5 +216,18 @@ public enum SchemaMigrations {
       WHEN NEW.id IS NOT NULL AND EXISTS (SELECT 1 FROM activity WHERE id = NEW.id)
       BEGIN SELECT RAISE(ABORT, 'a stored activity record cannot be replaced'); END
       """,
+    ])
+
+  /// Version 5: the settings audit trail gets the same guard as the activity log. `INSERT OR
+  /// REPLACE` deletes the old row without firing the delete trigger, so an insert may not reuse a
+  /// stored id.
+  private static let version5 = Migration(
+    version: 5,
+    statements: [
+      """
+      CREATE TRIGGER settings_audit_cannot_be_replaced BEFORE INSERT ON settings_audit
+      WHEN NEW.id IS NOT NULL AND EXISTS (SELECT 1 FROM settings_audit WHERE id = NEW.id)
+      BEGIN SELECT RAISE(ABORT, 'a stored audit record cannot be replaced'); END
+      """
     ])
 }

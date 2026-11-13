@@ -110,3 +110,11 @@ The activity log. New and open until the v0.1 release.
   refused or failed request rolls back and is recorded afterwards. A `wait` is recorded when it ends.
 - Nested transactions use savepoints on the same connection, so cleanup can run inside the transaction of the owner
   operation that asked for it.
+
+## Version 5
+
+New and open until the v0.1 release.
+
+| Trigger | Rule |
+|---|---|
+| `settings_audit_cannot_be_replaced` | An insert into `settings_audit` that reuses a stored id is refused, so `INSERT OR REPLACE` cannot rewrite an audit record. The same guarantee as the activity log: it holds against the service and ordinary SQL, not against someone who can edit the file and drop triggers. |
