@@ -117,21 +117,20 @@ public struct MessageService {
     let limit = TimeInterval(try setting("messaging.wait", token: token, allowingZero: true))
     let allowed = min(timeout ?? limit, limit)
     let deadline = clock.now().addingTimeInterval(allowed)
-    var holdsPlace = false
-    defer { if holdsPlace { waitQuota.release(principal: recipient.id) } }
+    var place: WaitPlace?
+    defer { if let place { waitQuota.release(principal: recipient.id, place: place) } }
     while true {
       let ticket = arrival.ticket(for: recipient.id)
       if try store.hasPending(for: recipient.id) { return .mail }
       if cancellation?.isCancelled == true { return .timedOut }
       let remaining = deadline.timeIntervalSince(clock.now())
       guard allowed > 0, remaining > 0 else { return .timedOut }
-      if !holdsPlace {
-        try waitQuota.acquire(
-          principal: recipient.id,
+      if place == nil {
+        place = try waitQuota.acquire(
+          principal: recipient.id, at: clock.now(),
           global: try setting("limits.waits.global", token: token, allowingZero: true),
           perPrincipalLimit: try setting("limits.waits.principal", token: token, allowingZero: true)
         )
-        holdsPlace = true
       }
       switch arrival.wait(for: recipient.id, since: ticket, timeout: remaining) {
       case .timedOut: return try store.hasPending(for: recipient.id) ? .mail : .timedOut
