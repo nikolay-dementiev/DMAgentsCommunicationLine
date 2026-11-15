@@ -15,6 +15,22 @@ private final class SpyReporter: FailureReporter, @unchecked Sendable {
   }
 }
 
+/// Runs a hook at the moment a failure is reported, to put another event inside that moment.
+private final class HookedReporter: FailureReporter, @unchecked Sendable {
+  private let lock = NSLock()
+  private var hook: (@Sendable () -> Void)?
+
+  func onReport(_ hook: @escaping @Sendable () -> Void) { lock.withLock { self.hook = hook } }
+
+  func report(_ error: any Error, operation: String) {
+    let pending = lock.withLock { () -> (@Sendable () -> Void)? in
+      defer { hook = nil }
+      return hook
+    }
+    pending?()
+  }
+}
+
 /// A write that fails is injected as a trigger on the activity table of the one record under test.
 struct CleanupFullDiskTests {
   private struct World {
@@ -105,6 +121,32 @@ struct CleanupFullDiskTests {
     #expect(
       try !warnings(world).contains(.string("cleanup_not_recorded")),
       "a cleanup with its record in the log clears the warning")
+  }
+
+  @Test func test_aScheduledRunBetweenTheCleanupAndItsLostRecord_isNotMarkedAsUnrecorded() throws {
+    let reporter = HookedReporter()
+    let fixture = try ServiceFixture(reporter: reporter)
+    let owner = try fixture.bootstrapOwner()
+    let raw = try RawFile(folder: fixture.folder)
+    try raw.execute(
+      """
+      CREATE TRIGGER no_record BEFORE INSERT ON activity
+      WHEN NEW.operation = 'health.cleanup'
+      BEGIN SELECT RAISE(ABORT, 'database or disk is full'); END
+      """)
+    // The scheduled run lands while the owner's record is being given up.
+    reporter.onReport { _ = try? fixture.runtime.cleanup.run() }
+
+    _ = fixture.call("health.cleanup", token: owner)
+    let health = fixture.call("health", token: owner)
+
+    guard case .array(let warnings) = try fixture.field(health, "warnings") else {
+      Issue.record("health lists its warnings")
+      return
+    }
+    #expect(
+      !warnings.contains(.string("cleanup_not_recorded")),
+      "the last run is the scheduled one, and its record is not missing")
   }
 
   @Test func test_aWaitThatFoundMail_isNotTurnedIntoAnErrorByItsRecord() throws {
