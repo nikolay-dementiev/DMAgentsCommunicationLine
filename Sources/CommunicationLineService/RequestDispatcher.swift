@@ -115,13 +115,14 @@ public struct RequestDispatcher: @unchecked Sendable {
     do {
       let outcome = response.failure?.code.rawValue ?? "internal"
       switch response.failure?.code.errorClass {
-      case .authentication?, .permission?, .invalidInput?:
+      case .internal?, nil:
+        // A failure of the service itself is never left out.
+        try activity.record(
+          actor: try actor(of: request), operation: name, outcome: outcome, targets: [])
+      default:
         // A client that is refused over and over must not be able to fill the log.
         try activity.recordRefusal(
           actor: try actor(of: request), operation: name, outcome: outcome)
-      default:
-        try activity.record(
-          actor: try actor(of: request), operation: name, outcome: outcome, targets: [])
       }
     } catch {
       reporter.report(error, operation: "record activity")
