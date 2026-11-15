@@ -67,7 +67,10 @@ extension CommandCatalog {
       }),
     Command(
       words: ["rule", "list"], operation: "rule.list", needsToken: true, positionals: [],
-      options: [], presentation: .rules, arguments: { _, _ in [:] }),
+      options: ["family"], presentation: .rules,
+      arguments: { invocation, _ in
+        invocation.single("family").map { ["family": .string($0)] } ?? [:]
+      }),
     Command(
       words: ["grant", "add"], operation: "grant.add", needsToken: true, positionals: [],
       options: [

@@ -60,9 +60,12 @@ public struct RightsService {
     try rights.revokeReadGrant(id: id, at: clock.now())
   }
 
-  public func sendRules(ownerToken: CredentialToken) throws -> [SendRule] {
+  /// Every send rule, or with `family` only those that send from it or into it.
+  public func sendRules(family: String? = nil, ownerToken: CredentialToken) throws -> [SendRule] {
     try requireOwner(ownerToken)
-    return try rights.sendRules()
+    let rules = try rights.sendRules()
+    guard let family else { return rules }
+    return rules.filter { $0.fromFamily == family || $0.toFamily == family }
   }
 
   public func readGrants(ownerToken: CredentialToken) throws -> [StoredReadGrant] {

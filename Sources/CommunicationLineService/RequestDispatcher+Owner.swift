@@ -47,7 +47,10 @@ extension RequestDispatcher {
       return .object([:])
     case .ruleList:
       return .object([
-        "rules": .array(try rights.sendRules(ownerToken: token).map(WireMapping.rule))
+        "rules": .array(
+          try rights.sendRules(
+            family: try arguments.optionalString("family"), ownerToken: token
+          ).map(WireMapping.rule))
       ])
     case .grantAdd, .grantRevoke, .grantList:
       return try performGrant(operation, token: token, arguments: arguments)
