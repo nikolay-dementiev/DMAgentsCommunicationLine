@@ -73,6 +73,8 @@ public enum HealthWarning: String, Equatable, Sendable {
 public struct HealthReport: Equatable, Sendable {
   public let startedAt: Date
   public let pending: [PendingCount]
+  /// The principals with pending mail and no `wait` parked for them.
+  public let notListeningWithPending: Int
   /// Every overdue delivery, though `overdue` lists only the oldest page of them.
   public let overdueCount: Int
   public let overdue: [OverdueDelivery]
@@ -84,6 +86,8 @@ public struct HealthReport: Equatable, Sendable {
 public protocol HealthStore {
   /// Every principal with pending mail, with how much.
   func pendingRecipients() throws -> [PendingRecipient]
+  /// Whether at least one principal belongs to `family`.
+  func hasPrincipals(inFamily family: String) throws -> Bool
   /// The pending deliveries of `recipient` created at or before `cutoff`: their number, and the
   /// oldest `limit` of them.
   func overdue(of recipient: PrincipalID, createdAtOrBefore cutoff: Date, limit: Int) throws
@@ -98,13 +102,16 @@ public struct HealthService {
   private let storage: StorageService
   private let cleanup: CleanupRunner
   private let identity: IdentityService
+  private let listening: any ListeningRegistry
   private let clock: any WallClock
   private let startedAt: Date
 
   public init(
     store: any HealthStore, settings: SettingsService, storage: StorageService,
-    cleanup: CleanupRunner, identity: IdentityService, clock: any WallClock, startedAt: Date
+    cleanup: CleanupRunner, identity: IdentityService, listening: any ListeningRegistry,
+    clock: any WallClock, startedAt: Date
   ) {
+    self.listening = listening
     self.store = store
     self.settings = settings
     self.storage = storage
@@ -114,16 +121,25 @@ public struct HealthService {
     self.startedAt = startedAt
   }
 
-  public func report(ownerToken: CredentialToken) throws -> HealthReport {
+  /// With `family`, `pending`, `overdue` and the not-listening count keep only the recipients of
+  /// that family; storage, warnings, the start and the last cleanup stay global.
+  ///
+  /// - Throws: ``IdentityError/unknownFamily(_:)`` when `family` has no principal.
+  public func report(ownerToken: CredentialToken, family: String? = nil) throws -> HealthReport {
     try identity.authenticateOwner(ownerToken)
+    if let family, try !store.hasPrincipals(inFamily: family) {
+      throw IdentityError.unknownFamily(family)
+    }
     let now = clock.now()
     let page = try pageSize()
-    let recipients = try store.pendingRecipients()
+    let recipients = try store.pendingRecipients().filter { family == nil || $0.family == family }
     let overdue = try overdueDeliveries(of: recipients, now: now, page: page)
     let status = try storage.status()
+    let listeners = listening.listeningPrincipals()
     return HealthReport(
       startedAt: startedAt,
       pending: recipients.map { PendingCount(principal: $0.principal, count: $0.count) },
+      notListeningWithPending: recipients.filter { !listeners.contains($0.principal) }.count,
       overdueCount: overdue.count,
       overdue: overdue.oldest.map { entry in
         OverdueDelivery(

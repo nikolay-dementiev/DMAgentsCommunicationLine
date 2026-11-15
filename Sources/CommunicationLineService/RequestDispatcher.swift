@@ -135,7 +135,9 @@ public struct RequestDispatcher: @unchecked Sendable {
     case .activityList:
       return try performActivity(token: try token(of: request), arguments: arguments)
     case .health:
-      return WireMapping.health(try health.report(ownerToken: try token(of: request)))
+      return WireMapping.health(
+        try health.report(
+          ownerToken: try token(of: request), family: try arguments.optionalString("family")))
     case .healthCleanup:
       return try performCleanup(token: try token(of: request), afterCommit: afterCommit)
     default:

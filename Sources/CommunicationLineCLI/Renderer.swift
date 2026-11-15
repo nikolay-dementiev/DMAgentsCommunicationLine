@@ -107,6 +107,7 @@ enum Renderer {
     lines += array(fields["pending"]).map {
       "pending: \(string($0["principal"]))\t\(scalar($0["count"]))"
     }
+    lines.append("not listening with pending: \(scalar(fields["not_listening_with_pending"]))")
     lines.append("overdue: \(scalar(fields["overdue_count"]))")
     lines += array(fields["overdue"]).map {
       "\(string($0["message"]))\t\(string($0["recipient"]))\t\(scalar($0["age_seconds"]))s"

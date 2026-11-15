@@ -37,6 +37,12 @@ public final class SQLiteHealthStore: HealthStore {
     }
   }
 
+  public func hasPrincipals(inFamily family: String) throws -> Bool {
+    try !store.database.rows(
+      "SELECT 1 FROM principals WHERE family = ?1 LIMIT 1", [.text(family)]
+    ).isEmpty
+  }
+
   public func overdue(of recipient: PrincipalID, createdAtOrBefore cutoff: Date, limit: Int) throws
     -> OverdueSlice
   {

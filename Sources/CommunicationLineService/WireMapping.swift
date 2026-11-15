@@ -112,6 +112,7 @@ enum WireMapping {
         report.pending.map {
           .object(["principal": .string($0.principal.rawValue), "count": .integer(Int64($0.count))])
         }),
+      "not_listening_with_pending": .integer(Int64(report.notListeningWithPending)),
       "overdue_count": .integer(Int64(report.overdueCount)),
       "overdue": .array(
         report.overdue.map {

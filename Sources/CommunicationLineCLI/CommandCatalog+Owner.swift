@@ -42,8 +42,11 @@ extension CommandCatalog {
         return arguments
       }),
     Command(
-      words: ["health"], operation: "health", needsToken: true, positionals: [], options: [],
-      presentation: .health, arguments: { _, _ in [:] }),
+      words: ["health"], operation: "health", needsToken: true, positionals: [],
+      options: ["family"], presentation: .health,
+      arguments: { invocation, _ in
+        invocation.single("family").map { ["family": .string($0)] } ?? [:]
+      }),
     Command(
       words: ["health", "cleanup"], operation: "health.cleanup", needsToken: true,
       positionals: [], options: [], presentation: .cleanup, arguments: { _, _ in [:] }),
