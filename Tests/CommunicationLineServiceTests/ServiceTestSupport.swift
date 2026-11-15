@@ -12,11 +12,13 @@ final class ServiceFixture: @unchecked Sendable {
 
   let clock: TestClock
 
-  init(clock: TestClock = TestClock()) throws {
+  init(clock: TestClock = TestClock(), reporter: any FailureReporter = StandardErrorReporter())
+    throws
+  {
     let name = "cl-" + UUID().uuidString.prefix(8).lowercased()
     folder = URL(fileURLWithPath: "/tmp/\(name)", isDirectory: true)
     self.clock = clock
-    runtime = try ServiceRuntime.open(storeFolder: folder, clock: clock)
+    runtime = try ServiceRuntime.open(storeFolder: folder, clock: clock, reporter: reporter)
   }
 
   deinit {

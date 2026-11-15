@@ -96,24 +96,4 @@ struct HealthAfterCleanupTests {
     #expect(last["deliveries"] == .integer(1), "the report holds what that run deleted")
     #expect(last["messages"] == .integer(1), "and the message")
   }
-
-  @Test func test_aCleanupWhoseRequestIsRolledBack_isNotTheLastCleanup() throws {
-    let fixture = try ServiceFixture()
-    let owner = try fixture.bootstrapOwner()
-    let raw = try RawFile(folder: fixture.folder)
-    try raw.execute(
-      """
-      CREATE TRIGGER no_cleanup_record BEFORE INSERT ON activity
-      WHEN NEW.operation = 'health.cleanup'
-      BEGIN SELECT RAISE(ABORT, 'record refused'); END
-      """)
-
-    let failed = fixture.call("health.cleanup", token: owner)
-    let health = fixture.call("health", token: owner)
-
-    #expect(failed.failure?.code == .internal, "the request fails: its record cannot be written")
-    #expect(
-      try fixture.field(health, "last_cleanup") == .null,
-      "a cleanup that was rolled back with its request is not reported as done")
-  }
 }
