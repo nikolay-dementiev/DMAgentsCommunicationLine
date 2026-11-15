@@ -178,7 +178,7 @@
       "default": 256,
       "range": { "min": 1, "max": 4096 },
       "scopes": ["global"],
-      "description": "The most connections the service keeps open at once. A connection past it is closed without an answer. The service reads it once, at start."
+      "description": "The most connections the service serves at once. A request on a connection past it is answered with too_many_connections; only a few such connections are held at a time and the rest are closed without an answer. The service reads it once, at start, and lowers it to what the open-file limit leaves room for (three descriptors per connection after a fixed reserve), logging that it did."
     },
     {
       "key": "limits.connections.owner_reserve",

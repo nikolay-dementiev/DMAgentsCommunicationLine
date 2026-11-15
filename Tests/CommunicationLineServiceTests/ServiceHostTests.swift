@@ -404,19 +404,21 @@ struct ConnectionLimitTests {
       maximumFrame: host.frameMaximum))?.isSuccess == true
   }
 
-  @Test func test_aConnectionPastTheLimit_isRefusedAtOnce_andAFreedPlaceIsUsable() throws {
+  @Test func test_aConnectionPastTheLimit_isAnsweredAtOnce_andAFreedPlaceIsUsable() throws {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
     let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 5, connectionLimit: 2)
     defer { host.stop() }
     let first = try UnixSocketClient.connect(path: host.socketPath)
     let second = try UnixSocketClient.connect(path: host.socketPath)
-    let third = try UnixSocketClient.connect(path: host.socketPath)
     let started = Date()
 
-    let answer = try third.read(upTo: 1)
+    let answer = try SocketExchange.call(
+      socketPath: host.socketPath, request: WireRequest(token: nil, operation: "owner.credential"),
+      maximumFrame: host.frameMaximum)
 
-    #expect(answer.isEmpty, "the service closed the connection it would not take")
+    #expect(
+      answer.failure?.code == .tooManyConnections, "the service said why it would not take it")
     #expect(Date().timeIntervalSince(started) < 2, "it refused at once, not after the timeout")
     first.close()
     let deadline = Date().addingTimeInterval(3)

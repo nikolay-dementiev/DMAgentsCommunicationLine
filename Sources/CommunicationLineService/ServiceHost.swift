@@ -11,6 +11,9 @@ public enum ServiceHostError: Error, Equatable {
   /// The socket path holds something that is not a socket of this user.
   case unexpectedFileAtSocketPath(String)
   case system(operation: String, code: Int32)
+  /// `limits.connections` asks for more connections than the open-file limit leaves room for, so
+  /// the service serves `usable` of them.
+  case connectionLimitDoesNotFit(configured: Int, usable: Int, openFileLimit: UInt64)
 }
 
 /// One service instance: the only opener of the store, listening on a Unix-domain socket inside the
@@ -42,6 +45,11 @@ public final class ServiceHost: @unchecked Sendable {
   private var connectionCounter: UInt64 = 0
   /// Connections that are serving an agent request, a parked wait included.
   private var agentConnections = 0
+  /// Connections accepted past the limit, only to be answered with too_many_connections. They are
+  /// also in `activeConnections`, so that `stop()` reaches them.
+  private var refusedConnections: Set<Int32> = []
+  /// How many connections past the limit are held at a time; the budget of descriptors allows it.
+  private static let refusalSlack = 16
 
   private init(
     runtime: ServiceRuntime, lock: InstanceLock, listener: Int32, socketPath: String,
@@ -69,12 +77,16 @@ public final class ServiceHost: @unchecked Sendable {
     requestTimeout: TimeInterval = 10, reporter: any FailureReporter = StandardErrorReporter(),
     userID: UInt32 = UInt32(geteuid()), clock: (any WallClock)? = nil,
     cleanupInterval: TimeInterval? = nil, connectionLimit: Int? = nil, ownerReserve: Int? = nil,
-    requestDeadline: TimeInterval? = nil
+    requestDeadline: TimeInterval? = nil,
+    descriptors: any DescriptorLimits = SystemDescriptorLimits()
   ) throws -> ServiceHost {
     try StoreFolder.prepare(storeFolder, waitingUpTo: 5000)
     let lock = try InstanceLock(path: storeFolder.appendingPathComponent(lockName).path)
     let runtime = try ServiceRuntime.open(
       storeFolder: storeFolder, clock: clock, reporter: reporter)
+    let usableConnections = Self.usableConnections(
+      configured: connectionLimit ?? runtime.connectionLimit, descriptors: descriptors,
+      reporter: reporter)
     let path = storeFolder.appendingPathComponent(socketName).path
     try removeStaleSocket(at: path, ownedBy: userID)
     let listener = try listen(at: path)
@@ -82,12 +94,35 @@ public final class ServiceHost: @unchecked Sendable {
       runtime: runtime, lock: lock, listener: listener, socketPath: path, peerReader: peerReader,
       requestTimeout: requestTimeout, reporter: reporter,
       cleanupInterval: cleanupInterval ?? runtime.cleanupInterval,
-      connectionLimit: connectionLimit ?? runtime.connectionLimit,
+      connectionLimit: usableConnections,
       ownerReserve: ownerReserve ?? runtime.ownerReserve,
       requestDeadline: requestDeadline ?? runtime.requestDeadline)
     Thread.detachNewThread { host.acceptLoop() }
     Thread.detachNewThread { host.cleanupLoop() }
     return host
+  }
+
+  /// Raises the open-file limit and returns the number of connections the service can serve: the
+  /// configured one, or fewer when the limit leaves no room for it. A connection limit that does
+  /// not fit is logged here, once, at start.
+  private static func usableConnections(
+    configured: Int, descriptors: any DescriptorLimits, reporter: any FailureReporter
+  ) -> Int {
+    let openFileLimit: UInt64
+    do {
+      openFileLimit = try descriptors.raiseSoftLimit()
+    } catch {
+      // The macOS default is the least the process can count on.
+      reporter.report(error, operation: "descriptor limit")
+      openFileLimit = 256
+    }
+    let fitting = DescriptorBudget.connectionsFitting(softLimit: openFileLimit)
+    guard configured > fitting else { return configured }
+    reporter.report(
+      ServiceHostError.connectionLimitDoesNotFit(
+        configured: configured, usable: fitting, openFileLimit: openFileLimit),
+      operation: "descriptor limit")
+    return fitting
   }
 
   /// Stops listening, answers parked waits, lets running requests finish for a moment, then closes
@@ -199,12 +234,16 @@ public final class ServiceHost: @unchecked Sendable {
         close(connection)
         return
       }
-      guard activeConnections.count < connectionLimit else {
+      // A connection past the limit is kept only long enough to read its request and answer it
+      // with too_many_connections, and only a few of them at a time; further ones are closed.
+      let isRefused = activeConnections.count - refusedConnections.count >= connectionLimit
+      guard !isRefused || refusedConnections.count < Self.refusalSlack else {
         state.unlock()
         close(connection)
         continue
       }
       activeConnections.insert(connection)
+      if isRefused { refusedConnections.insert(connection) }
       connectionCounter += 1
       let identity = connectionCounter
       awaitingRequest[connection] = identity
@@ -248,6 +287,7 @@ public final class ServiceHost: @unchecked Sendable {
       // the same lock, so it can never touch a descriptor number that was closed and reused.
       state.lock()
       activeConnections.remove(descriptor)
+      refusedConnections.remove(descriptor)
       awaitingRequest[descriptor] = nil
       state.broadcast()
       state.unlock()
@@ -261,8 +301,14 @@ public final class ServiceHost: @unchecked Sendable {
       let payload = try codec.readFrame(from: stream)
       requestFinished(descriptor)
       guard let payload else { return }
-      guard let answered = answer(payload, over: descriptor) else { return }
-      response = answered
+      if isRefused(descriptor) {
+        response = .failure(
+          code: .tooManyConnections,
+          message: "the service has no free connection; try again shortly")
+      } else {
+        guard let answered = answer(payload, over: descriptor) else { return }
+        response = answered
+      }
     } catch let error as FrameError {
       response = failure(for: error)
     } catch UnixSocketError.system(_, let code) where code == EAGAIN || code == ECONNRESET {
@@ -276,6 +322,12 @@ public final class ServiceHost: @unchecked Sendable {
     // instead of holding its connection for as long as it likes.
     armDeadline(for: descriptor)
     send(response, over: stream, codec: codec)
+  }
+
+  private func isRefused(_ descriptor: Int32) -> Bool {
+    state.lock()
+    defer { state.unlock() }
+    return refusedConnections.contains(descriptor)
   }
 
   private func armDeadline(for descriptor: Int32) {
