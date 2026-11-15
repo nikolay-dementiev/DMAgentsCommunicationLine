@@ -97,7 +97,10 @@ final class InstalledWorld: @unchecked Sendable {
   func addAgent(family: String, name: String) throws -> AgentSetupReport {
     let ownerToken = try String(contentsOf: layout.ownerTokenURL, encoding: .utf8)
       .trimmingCharacters(in: .newlines)
-    return try AgentSetup(layout: layout, storeFolder: layout.storeFolder, connect: connect).add(
+    return try AgentSetup(
+      layout: layout, storeFolder: layout.storeFolder,
+      manifest: FileManifestListing(manifestURL: layout.manifestURL), connect: connect
+    ).add(
       AgentRequest(family: family, role: "agent", name: name, client: nil), ownerToken: ownerToken)
   }
 

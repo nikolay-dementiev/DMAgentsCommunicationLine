@@ -61,12 +61,15 @@ public struct AgentSetup {
   private let layout: HostLayout
   private let storeFolder: URL
   private let connect: (String) -> any ServiceConnection
+  private let manifest: any ManifestListing
 
   public init(
-    layout: HostLayout, storeFolder: URL, connect: @escaping (String) -> any ServiceConnection
+    layout: HostLayout, storeFolder: URL, manifest: any ManifestListing,
+    connect: @escaping (String) -> any ServiceConnection
   ) {
     self.layout = layout
     self.storeFolder = storeFolder
+    self.manifest = manifest
     self.connect = connect
   }
 
@@ -154,9 +157,7 @@ public struct AgentSetup {
     throws
   {
     // Listed first: a listed file that was never written is harmless, an unlisted one is not.
-    var manifest = try Manifest.read(from: layout.manifestURL)
-    manifest.files.append(file.path)
-    try manifest.write(to: layout.manifestURL)
+    try manifest.list(file: file.path)
     try HostFiles.createExclusively(
       Data(
         AgentInstructions.claudeCodeCommand(request: request, id: id, invocation: invocation).utf8),

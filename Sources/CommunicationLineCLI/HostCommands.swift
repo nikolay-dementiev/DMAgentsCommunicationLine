@@ -98,7 +98,7 @@ public struct SystemHostCommands: HostCommands {
       home: home.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? defaultHome)
     let report = try AgentSetup(
       layout: layout, storeFolder: URL(fileURLWithPath: storeFolder, isDirectory: true),
-      connect: connect
+      manifest: FileManifestListing(manifestURL: layout.manifestURL), connect: connect
     ).add(request, ownerToken: ownerToken)
     return [
       "agent: \(report.principalID)", "token file: \(report.tokenFile)",

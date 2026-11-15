@@ -57,7 +57,9 @@ struct AgentSetupTests {
         try manifest.write(to: layout.manifestURL)
       }
       setup = AgentSetup(
-        layout: layout, storeFolder: layout.storeFolder, connect: { [service] _ in service })
+        layout: layout, storeFolder: layout.storeFolder,
+        manifest: FileManifestListing(manifestURL: layout.manifestURL),
+        connect: { [service] _ in service })
     }
 
     func add(
