@@ -73,6 +73,15 @@
       "description": "The share of the disk budget at which health reports a warning."
     },
     {
+      "key": "storage.refusal_percent",
+      "type": "integer",
+      "unit": "percent",
+      "default": 95,
+      "range": { "min": 1, "max": 100 },
+      "scopes": ["global"],
+      "description": "The share of the disk budget at which send is refused with storage_full. Reading, acknowledging, waiting, cleanup and every owner operation keep working. Set it above storage.warning_percent so the warning comes first."
+    },
+    {
       "key": "health.threshold",
       "type": "duration",
       "unit": "seconds",

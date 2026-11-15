@@ -74,6 +74,8 @@ public enum ErrorMapping {
     case .recipientInboxFull(let id, let limit):
       return (.recipientInboxFull, "\(id.rawValue) already has \(limit) pending messages")
     case .tooManyWaiters: return (.tooManyWaiters, "too many waits are parked")
+    case .storageFull:
+      return (.storageFull, "the store is full: new mail is refused until space is freed")
     }
   }
 

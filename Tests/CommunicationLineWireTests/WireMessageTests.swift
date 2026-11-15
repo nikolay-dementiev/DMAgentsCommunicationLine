@@ -84,7 +84,7 @@ struct WireMessageTests {
         "unknown_grant", "unknown_key", "invalid_name", "invalid_rule", "invalid_page_limit",
         "invalid_setting",
         "no_recipients", "too_many_recipients", "recipient_inbox_full", "too_many_waiters",
-        "too_many_connections",
+        "too_many_connections", "storage_full",
         "subject_too_large", "body_too_large", "expiry_in_the_past",
         "scope_not_allowed", "subject_required", "subject_not_allowed", "invalid_value",
         "internal",

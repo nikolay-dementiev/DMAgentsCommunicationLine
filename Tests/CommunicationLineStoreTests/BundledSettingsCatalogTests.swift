@@ -20,6 +20,7 @@ import Testing
         "cleanup.interval": .integer(300),
         "storage.budget": .integer(5_000_000_000),
         "storage.warning_percent": .integer(80),
+        "storage.refusal_percent": .integer(95),
         "health.threshold": .integer(1800),
         "messaging.wait": .integer(900),
         "messaging.subject_max": .integer(512),

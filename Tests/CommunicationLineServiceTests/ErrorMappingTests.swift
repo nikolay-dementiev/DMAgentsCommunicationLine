@@ -68,6 +68,7 @@ struct LimitErrorMappingTests {
       (MessageError.tooManyRecipients(limit: 2, actual: 3), .tooManyRecipients),
       (MessagingError.recipientInboxFull(PrincipalID("p1"), limit: 5), .recipientInboxFull),
       (MessagingError.tooManyWaiters, .tooManyWaiters),
+      (MessagingError.storageFull, .storageFull),
     ]
     for (error, expected) in cases {
       let response = ErrorMapping.response(for: error, operation: "send", reporter: reporter)

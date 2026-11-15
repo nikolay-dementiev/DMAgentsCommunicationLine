@@ -18,6 +18,9 @@ public enum MessagingError: Error, Equatable {
   case recipientInboxFull(PrincipalID, limit: Int)
   /// Every parked wait the service allows is in use.
   case tooManyWaiters
+  /// The store reached its refusal level against `storage.budget`; no new mail is accepted until
+  /// space is freed.
+  case storageFull
 }
 
 /// A message ready to be stored. The sender is the authenticated caller, never a request field.

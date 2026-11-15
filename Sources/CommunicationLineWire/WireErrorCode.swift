@@ -34,6 +34,7 @@ public enum WireErrorCode: String, Sendable, Codable, CaseIterable {
   case recipientInboxFull = "recipient_inbox_full"
   case tooManyWaiters = "too_many_waiters"
   case tooManyConnections = "too_many_connections"
+  case storageFull = "storage_full"
   case subjectTooLarge = "subject_too_large"
   case bodyTooLarge = "body_too_large"
   case expiryInThePast = "expiry_in_the_past"
@@ -45,7 +46,8 @@ public enum WireErrorCode: String, Sendable, Codable, CaseIterable {
 
   public var errorClass: WireErrorClass {
     switch self {
-    case .badRequest, .frameTooLarge, .recipientInboxFull, .tooManyWaiters, .tooManyConnections:
+    case .badRequest, .frameTooLarge, .recipientInboxFull, .tooManyWaiters, .tooManyConnections,
+      .storageFull:
       return .request
     case .tokenRequired, .unknownToken, .tokenRevoked, .principalDisabled: return .authentication
     case .ownerRequired, .agentRequired, .recipientRefused: return .permission

@@ -68,6 +68,8 @@ public struct OverdueDelivery: Equatable, Sendable {
 public enum HealthWarning: String, Equatable, Sendable {
   /// The database passed `storage.warning_percent` of `storage.budget`.
   case storageBudget = "storage_budget"
+  /// The database passed `storage.refusal_percent` of `storage.budget`, so `send` is refused.
+  case storageFull = "storage_full"
 }
 
 public struct HealthReport: Equatable, Sendable {
