@@ -10,6 +10,7 @@ enum Presentation: Sendable {
   case inbox
   case message
   case principal
+  case principals
   case rules
   case grants
   case setting

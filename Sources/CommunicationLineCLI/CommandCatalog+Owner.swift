@@ -23,6 +23,12 @@ extension CommandCatalog {
         ]
       }),
     Command(
+      words: ["principal", "list"], operation: "principal.list", needsToken: true,
+      positionals: [], options: ["family"], presentation: .principals,
+      arguments: { invocation, _ in
+        invocation.single("family").map { ["family": .string($0)] } ?? [:]
+      }),
+    Command(
       words: ["activity"], operation: "activity.list", needsToken: true, positionals: [],
       options: ["after", "limit"], presentation: .activity,
       arguments: { invocation, _ in

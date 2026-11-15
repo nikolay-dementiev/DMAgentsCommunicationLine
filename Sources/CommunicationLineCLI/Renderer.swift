@@ -36,6 +36,7 @@ enum Renderer {
         [fields["id"], fields["family"], fields["role"], fields["name"]].map(string).joined(
           separator: "\t")
       ]
+    case .principals: return array(fields["principals"]).map(listedPrincipal)
     case .inbox: return inbox(fields)
     case .message: return message(fields)
     case .rules:
@@ -48,6 +49,27 @@ enum Renderer {
     case .cleanup:
       return ["deliveries", "messages", "activity"].map { "\($0): \(scalar(fields[$0]))" }
     }
+  }
+
+  /// What `--json` prints for a successful result. The owner listing is an array of objects, so a
+  /// script reads it without the wrapper that the wire needs.
+  static func jsonBody(_ result: WireValue, as presentation: Presentation) -> WireValue {
+    guard presentation == .principals, case .object(let fields) = result,
+      let principals = fields["principals"]
+    else { return result }
+    return principals
+  }
+
+  private static func listedPrincipal(_ entry: [String: WireValue]) -> String {
+    var listening = "not listening"
+    if case .integer(let since)? = entry["listening_since_ms"] {
+      listening = "listening since \(since)"
+    }
+    return [
+      string(entry["id"]), string(entry["family"]), string(entry["role"]), string(entry["name"]),
+      entry["enabled"] == .bool(true) ? "enabled" : "disabled",
+      "pending \(scalar(entry["pending"]))", listening,
+    ].joined(separator: "\t")
   }
 
   private static func inbox(_ fields: [String: WireValue]) -> [String] {

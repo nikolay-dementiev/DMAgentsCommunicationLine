@@ -275,7 +275,9 @@ public struct CommandRunner {
     }
     if asJSON {
       do {
-        standardOutput(try Renderer.json(result, encode: encode))
+        standardOutput(
+          try Renderer.json(
+            Renderer.jsonBody(result, as: command.presentation), encode: encode))
       } catch {
         standardError("commline: cannot encode the answer: \(error)")
         return CommandExitStatus.failure.rawValue
