@@ -23,6 +23,7 @@ import Testing
         "storage.refusal_percent": .integer(95),
         "health.threshold": .integer(1800),
         "messaging.wait": .integer(900),
+        "messaging.wait_recheck": .integer(5),
         "messaging.subject_max": .integer(512),
         "messaging.body_max": .integer(262_144),
         "messaging.page_size": .integer(100),

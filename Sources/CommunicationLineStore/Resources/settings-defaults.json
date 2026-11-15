@@ -100,6 +100,15 @@
       "description": "The default and maximum time a wait for new mail may stay parked. Zero disables parked waits."
     },
     {
+      "key": "messaging.wait_recheck",
+      "type": "duration",
+      "unit": "seconds",
+      "default": 5,
+      "range": { "min": 1, "max": 60 },
+      "scopes": ["global"],
+      "description": "How often a parked wait checks that its principal may still read. A wait whose principal was disabled or whose credential was revoked ends with that error within this time."
+    },
+    {
       "key": "messaging.subject_max",
       "type": "bytes",
       "unit": "bytes",
