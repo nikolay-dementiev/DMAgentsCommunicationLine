@@ -38,13 +38,15 @@ when the service fails or answers without a token. Standard output carries only 
 | `owner init` | none | `--token-out <path>` (required). Issues the first owner credential and writes the token to that file |
 | `owner rotate` | owner | `--token-out <path>` (required). Replaces the owner credential and writes the new token to that file |
 | `principal create` | owner | `--family`, `--role head\|agent`, `--name`. Prints `id`, `family`, `role`, `name` |
+| `principal list` | owner | `--family <name>`. One line per principal, see [Principal list](#principal-list) |
 | `principal disable <id>`, `principal enable <id>` | owner | |
 | `credential issue <principal-id>` | owner | `--token-out <path>` (required). Writes the new token (shown once) to that file |
-| `rule add <from> <to>`, `rule remove <from> <to>`, `rule list` | owner | Family names |
+| `rule add <from> <to>`, `rule remove <from> <to>` | owner | Family names |
+| `rule list` | owner | `--family <name>` keeps only the rules that send from that family or into it. Prints one `from`, `to` line per rule (tab separated) |
 | `grant add` | owner | `--reader-principal <id>` or `--reader-family <name>`; `--target-principal <id>`, `--target-family <name>` or `--target-global`; `--expires-at-ms <n>`. Prints the grant id |
 | `grant revoke <id>`, `grant list` | owner | |
 | `activity` | owner | `--after <cursor>`, `--limit <n>`. Prints one `id`, `at_ms`, `actor`, `operation`, `outcome`, `targets` (comma separated) line per record (tab separated) and `next: <cursor>` when more follow |
-| `health` | owner | Prints the health report as text, or as the result document with `--json`. Works without any agent session |
+| `health` | owner | `--family <name>` keeps `pending`, `overdue` and the not-listening count to the recipients of that family. Prints the health report as text, or as the result document with `--json`. Works without any agent session |
 | `health cleanup` | owner | Runs cleanup now. Prints `deliveries: <n>`, `messages: <n>` and `activity: <n>`: what it deleted |
 | `setting get <key>` | any | Prints the value that applies to the caller |
 | `setting set <key> <value>` | owner | `--scope global\|family\|principal`, `--subject <name>`. The value is an integer, `true`/`false`, or text |
@@ -86,10 +88,33 @@ controls (U+202A to U+202E, U+2066 to U+2069) and the line and paragraph separat
 
 `commline health` prints, in this order: `started:` (milliseconds since 1970), `storage:` (bytes used of the budget
 and the warning percent), one `warning: <name>` line per active warning (`storage_budget`), one `pending: <principal>`
-and count line per principal with pending mail, `overdue: <count>` followed by one `message`, `recipient`,
+and count line per principal with pending mail, `not listening with pending: <count>` (the principals that have
+pending mail and no parked `wait`), `overdue: <count>` followed by one `message`, `recipient`,
 `<age>s` line (tab separated) for each of the oldest overdue deliveries (at most `messaging.page_size`), and
 `last cleanup:` with its time and the three counts, `failed` after the time when the run failed, or `none` when no
 cleanup has run since the service started.
+
+## Principal list
+
+`commline principal list [--family <name>]` is for the owner. It prints one line per principal, sorted by family,
+then role (`agent` before `head`), then name, with tab separated fields:
+
+```
+<id>  <family>  <role>  <name>  enabled|disabled  pending <n>  listening since <ms>|not listening
+```
+
+`pending` is the number of deliveries to the principal that nobody has acknowledged. `listening since` carries the
+time (milliseconds since 1970) at which the oldest `wait` of that principal that is parked in the service started.
+With `--json` the output is an array of objects with the fields `id`, `family`, `role`, `name`, `enabled`,
+`pending` and `listening_since_ms` (`null` when the principal is not listening).
+
+The listening state is kept in the memory of the service only. It is not written to the database and does not
+survive a restart of the service; a waiter that reconnects after a restart is listening again. A `wait` that ends
+(mail, timeout or a disconnect) stops counting at once. The command shows who is waiting, not whether the
+session behind the waiter is alive.
+
+A `--family` with no principal is refused with exit status 6 and `no principal in family <name>`. `health
+--family` is refused the same way; `rule list --family` is not, because a family may exist without a rule.
 
 ## Exit statuses
 
@@ -103,7 +128,7 @@ The table is stable. A failure is never 0.
 | 3 | unreachable | Nothing is listening on the socket |
 | 4 | authentication | `token_required`, `unknown_token`, `token_revoked`, `principal_disabled` |
 | 5 | permission | `owner_required`, `agent_required`, `recipient_refused` |
-| 6 | not found | `unknown_principal`, `unknown_recipient`, `message_unavailable`, `unknown_grant`, `unknown_key` |
+| 6 | not found | `unknown_principal`, `unknown_family`, `unknown_recipient`, `message_unavailable`, `unknown_grant`, `unknown_key` |
 | 7 | invalid input | A value the service refused (names, rules, limits such as `too_many_recipients`, settings, expiry) |
 | 8 | protocol | `bad_request`, `frame_too_large`, `recipient_inbox_full`, `too_many_waiters`, or an answer that is not a response |
 | 9 | timed out | `wait` ended without mail |

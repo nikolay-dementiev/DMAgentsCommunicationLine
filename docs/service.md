@@ -97,6 +97,7 @@ otherwise). "Any" means a principal token; the owner token is refused by the mes
 | `wait` | any | `timeout` optional, seconds, at least 0 | `outcome`: `mail` or `timeout` |
 | `owner.credential` | none or owner | none | `token`. Without a token it issues the first owner credential; with the current owner token it replaces it |
 | `principal.create` | owner | `family`, `role` (`head` or `agent`), `name` | `id`, `family`, `role`, `name`, `enabled` |
+| `principal.list` | owner | `family` optional | `principals` (list of `id`, `family`, `role`, `name`, `enabled`, `pending`, `listening_since_ms`, which is `null` when no `wait` of the principal is parked). Sorted by family, role, name. `unknown_family` when `family` has no principal |
 | `principal.disable` | owner | `principal` | empty |
 | `principal.enable` | owner | `principal` | empty. A no-op for an enabled principal; a disabled one needs a new credential |
 | `credential.issue` | owner | `principal` | `token` (shown once) |
@@ -104,11 +105,11 @@ otherwise). "Any" means a principal token; the owner token is refused by the mes
 | `grant.revoke` | owner | `id` | empty |
 | `grant.list` | owner | none | `grants` (list of `id`, `reader_kind`, `reader`, `target_kind`, `target`, `expires_at_ms`, `revoked`) |
 | `rule.add`, `rule.remove` | owner | `from`, `to` (families) | empty |
-| `rule.list` | owner | none | `rules` (list of `from`, `to`) |
+| `rule.list` | owner | `family` optional: only the rules that send from it or into it | `rules` (list of `from`, `to`) |
 | `setting.get` | any, or owner | `key` | `key`, `value` (the value that applies to the caller) |
 | `setting.set` | owner | `key`, `value`, `scope` optional (default `global`), `subject` for `family` and `principal` | `key` |
 | `activity.list` | owner | `after` optional cursor (the id of the last record seen), `limit` optional, 1 to `messaging.page_size` | `records` (list of `id`, `at_ms`, `actor`, `operation`, `outcome`, `targets`), `next` (cursor, absent on the last page) |
-| `health` | owner | none | See [Health report](#health-report) |
+| `health` | owner | `family` optional: `pending`, `overdue` and `not_listening_with_pending` keep only that family's recipients; `unknown_family` when it has no principal | See [Health report](#health-report) |
 | `health.cleanup` | owner | none | `deliveries`, `messages`, `activity`: how many rows the run deleted |
 
 `wait` blocks the connection. It returns `mail` as soon as the caller has pending mail (also mail that
@@ -132,6 +133,7 @@ Each code belongs to one class; the CLI maps the class to its exit status.
 | `agent_required` | permission | The operation needs a principal token |
 | `recipient_refused` | permission | The send policy refuses a recipient |
 | `unknown_principal` | not found | No such principal |
+| `unknown_family` | not found | The family named in `family` has no principal |
 | `unknown_recipient` | not found | A recipient does not exist |
 | `message_unavailable` | not found | No such message, or it may not be read by the caller (the same answer) |
 | `unknown_grant` | not found | No such grant |
@@ -175,6 +177,7 @@ health report; the memory lasts as long as the process.
 |---|---|
 | `started_at_ms` | When the service started |
 | `pending` | List of `principal` and `count`, for principals with pending mail |
+| `not_listening_with_pending` | How many principals have pending mail and no `wait` parked for them (see `principal.list`; the state is in memory only) |
 | `overdue_count` | All deliveries pending longer than `health.threshold` |
 | `overdue` | The oldest `messaging.page_size` of them: `message`, `recipient`, `age_seconds` |
 | `storage` | `used_bytes` (pages in use, not the free ones), `budget_bytes`, `warning_percent` |
