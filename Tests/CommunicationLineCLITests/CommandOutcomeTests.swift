@@ -303,6 +303,7 @@ struct CommandOutcomeTests {
     let report = WireValue.object([
       "started_at_ms": .integer(1_800_000_000_000),
       "pending": .array([.object(["principal": .string("p2"), "count": .integer(3)])]),
+      "not_listening_with_pending": .integer(1),
       "overdue_count": .integer(2),
       "overdue": .array([
         .object([
@@ -330,6 +331,7 @@ struct CommandOutcomeTests {
         storage: 4096 of 5000 bytes, warning at 80%
         warning: storage_budget
         pending: p2\t3
+        not listening with pending: 1
         overdue: 2
         m1\tp2\t1860s
         last cleanup: 1800000100000 deliveries=1 messages=1 activity=0

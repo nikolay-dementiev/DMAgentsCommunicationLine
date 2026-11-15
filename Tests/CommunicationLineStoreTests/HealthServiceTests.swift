@@ -22,8 +22,8 @@ import Testing
       health = HealthService(
         store: SQLiteHealthStore(store: store), settings: world.settings,
         storage: StorageService(store: SQLiteStorageStore(store: store), settings: world.settings),
-        cleanup: cleanup, identity: world.identity.service, clock: world.clock,
-        startedAt: startedAt)
+        cleanup: cleanup, identity: world.identity.service, listening: WaitQuota(),
+        clock: world.clock, startedAt: startedAt)
     }
 
     func report() throws -> HealthReport { try health.report(ownerToken: world.owner) }
@@ -139,6 +139,10 @@ import Testing
 
     func pendingRecipients() throws -> [PendingRecipient] { try wrapped.pendingRecipients() }
 
+    func hasPrincipals(inFamily family: String) throws -> Bool {
+      try wrapped.hasPrincipals(inFamily: family)
+    }
+
     func overdue(of recipient: PrincipalID, createdAtOrBefore cutoff: Date, limit: Int) throws
       -> OverdueSlice
     {
@@ -156,8 +160,8 @@ import Testing
       store: measuring, settings: world.settings,
       storage: StorageService(
         store: SQLiteStorageStore(store: world.identity.store), settings: world.settings),
-      cleanup: fixture.cleanup, identity: world.identity.service, clock: world.clock,
-      startedAt: fixture.startedAt)
+      cleanup: fixture.cleanup, identity: world.identity.service, listening: WaitQuota(),
+      clock: world.clock, startedAt: fixture.startedAt)
     try fixture.set("messaging.page_size", to: 2)
     for index in 0..<5 { try world.mail(from: world.alphaToken, to: world.alphaPeer, "m\(index)") }
     fixture.advance(seconds: 3600)
