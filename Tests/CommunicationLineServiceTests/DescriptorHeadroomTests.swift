@@ -96,6 +96,78 @@ struct DescriptorHeadroomTests {
     #expect(!reporter.operations.contains("descriptor limit"), "nothing to say when it fits")
   }
 
+  // MARK: - The raise, with limits the machine does not have
+
+  /// What the system answers for a hard limit that is not set (`RLIM_INFINITY`).
+  private let unlimited = rlim_t.max >> 1
+
+  private final class WrittenLimits: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [rlim_t] = []
+
+    var values: [rlim_t] { lock.withLock { stored } }
+    func add(_ value: rlim_t) { lock.withLock { stored.append(value) } }
+  }
+
+  private func system(
+    soft: rlim_t, hard: rlim_t, ceiling: rlim_t, accepts: Bool = true, written: WrittenLimits
+  ) -> SystemDescriptorLimits {
+    SystemDescriptorLimits(
+      read: { rlimit(rlim_cur: soft, rlim_max: hard) },
+      write: { limit in
+        written.add(limit.rlim_cur)
+        return accepts
+      }, ceiling: { ceiling })
+  }
+
+  @Test func test_aLowSoftLimit_isRaisedToTheCeiling_whenTheHardLimitIsHigher() throws {
+    let written = WrittenLimits()
+
+    let raised = try system(
+      soft: 256, hard: unlimited, ceiling: 10_240, written: written
+    ).raiseSoftLimit()
+
+    #expect(raised == 10_240, "the limit in force is the ceiling of the system")
+    #expect(written.values == [10_240], "and it was asked for once")
+  }
+
+  @Test func test_aLowSoftLimit_isRaisedToTheHardLimit_whenThatIsLower() throws {
+    let written = WrittenLimits()
+
+    let raised = try system(soft: 256, hard: 4096, ceiling: 10_240, written: written)
+      .raiseSoftLimit()
+
+    #expect(raised == 4096, "the hard limit is as far as it goes")
+    #expect(written.values == [4096], "and that is what was asked for")
+  }
+
+  @Test func test_aSoftLimitAlreadyAtTheTarget_isNotWrittenAgain() throws {
+    let written = WrittenLimits()
+
+    let raised = try system(
+      soft: 10_240, hard: unlimited, ceiling: 10_240, written: written
+    ).raiseSoftLimit()
+
+    #expect(raised == 10_240, "the limit stays")
+    #expect(written.values.isEmpty, "nothing was written")
+  }
+
+  @Test func test_aRaiseTheSystemRefuses_leavesTheLimitAsItWas() throws {
+    let written = WrittenLimits()
+
+    let raised = try system(
+      soft: 256, hard: unlimited, ceiling: 10_240, accepts: false, written: written
+    ).raiseSoftLimit()
+
+    #expect(raised == 256, "the answer is the limit that is still in force, not the one asked for")
+  }
+
+  @Test func test_aLimitThatCannotBeRead_isAnError() throws {
+    let unreadable = SystemDescriptorLimits(read: { nil }, write: { _ in true }, ceiling: { 0 })
+
+    #expect(throws: ServiceHostError.self) { _ = try unreadable.raiseSoftLimit() }
+  }
+
   @Test func test_theSystemLimits_raiseTheSoftLimitTowardTheHardLimit() throws {
     var before = rlimit()
     getrlimit(RLIMIT_NOFILE, &before)
