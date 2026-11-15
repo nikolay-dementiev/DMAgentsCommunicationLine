@@ -67,6 +67,23 @@ struct DispatcherFloodTests {
     #expect(try lines(world, outcome: "owner_required").count == 1, "one for the wrong role")
   }
 
+  @Test func test_repeatedNotFoundRefusals_leaveOneRecordInsideTheWindow() throws {
+    let world = try makeWorld()
+
+    for _ in 0..<6 {
+      _ = world.fixture.call(
+        "send", token: world.alice.token,
+        [
+          "to": .array([.string(UUID().uuidString.lowercased())]), "subject": .string("s"),
+          "body": .string("b"),
+        ])
+    }
+
+    #expect(
+      try lines(world, outcome: "unknown_recipient").count == 1,
+      "a refusal of the not-found class is throttled like the others")
+  }
+
   @Test func test_successfulRequests_areAllRecorded() throws {
     let world = try makeWorld()
 
