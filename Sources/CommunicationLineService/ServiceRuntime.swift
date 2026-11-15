@@ -72,7 +72,7 @@ public final class ServiceRuntime {
       store: SQLiteMessageStore(store: store), rights: SQLiteRightsStore(store: store),
       authenticator: identity, settings: settings, identifiers: UUIDIdentifierSource(),
       clock: clock, arrival: arrival,
-      waitQuota: waitQuota)
+      waitLimiter: waitQuota)
     try applyStoredBusyTimeout(catalog: catalog, settings: settingsStore, to: store)
     let frameMaximum = try frameMaximum(catalog: catalog, store: settingsStore)
     let activity = ActivityService(

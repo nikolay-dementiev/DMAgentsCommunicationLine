@@ -11,13 +11,13 @@ public struct MessageService {
   private let identifiers: any IdentifierSource
   private let clock: any WallClock
   private let arrival: any MailArrival
-  private let waitQuota: WaitQuota
+  private let waitLimiter: any WaitLimiting
 
   public init(
     store: any MessageStore, rights: any RightsStore, authenticator: any Authenticating,
     settings: any SettingsReading,
     identifiers: any IdentifierSource, clock: any WallClock, arrival: any MailArrival,
-    waitQuota: WaitQuota
+    waitLimiter: any WaitLimiting
   ) {
     self.store = store
     self.rights = rights
@@ -26,7 +26,7 @@ public struct MessageService {
     self.identifiers = identifiers
     self.clock = clock
     self.arrival = arrival
-    self.waitQuota = waitQuota
+    self.waitLimiter = waitLimiter
   }
 
   // MARK: - Send
@@ -118,7 +118,7 @@ public struct MessageService {
     let allowed = min(timeout ?? limit, limit)
     let deadline = clock.now().addingTimeInterval(allowed)
     var place: WaitPlace?
-    defer { if let place { waitQuota.release(principal: recipient.id, place: place) } }
+    defer { if let place { waitLimiter.release(principal: recipient.id, place: place) } }
     while true {
       let ticket = arrival.ticket(for: recipient.id)
       if try store.hasPending(for: recipient.id) { return .mail }
@@ -126,7 +126,7 @@ public struct MessageService {
       let remaining = deadline.timeIntervalSince(clock.now())
       guard allowed > 0, remaining > 0 else { return .timedOut }
       if place == nil {
-        place = try waitQuota.acquire(
+        place = try waitLimiter.acquire(
           principal: recipient.id, at: clock.now(),
           global: try setting("limits.waits.global", token: token, allowingZero: true),
           perPrincipalLimit: try setting("limits.waits.principal", token: token, allowingZero: true)

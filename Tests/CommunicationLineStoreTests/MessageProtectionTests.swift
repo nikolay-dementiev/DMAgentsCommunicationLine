@@ -132,7 +132,7 @@ import Testing
         store: SQLiteMessageStore(store: store), rights: SQLiteRightsStore(store: store),
         authenticator: identity, settings: settings, identifiers: SequentialIdentifiers(),
         clock: clock, arrival: RecordingArrival(),
-        waitQuota: WaitQuota())
+        waitLimiter: WaitQuota())
     }
   }
 

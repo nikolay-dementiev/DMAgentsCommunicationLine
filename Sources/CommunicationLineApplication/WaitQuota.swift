@@ -11,13 +11,25 @@ public protocol ListeningRegistry: Sendable {
 }
 
 /// A place taken by one parked wait; it is given back when that wait ends.
-struct WaitPlace {
-  fileprivate let number: UInt64
+public struct WaitPlace: Sendable {
+  public let number: UInt64
+
+  public init(number: UInt64) { self.number = number }
+}
+
+/// What a message service needs from the registry of parked waits: take a place or be refused, and
+/// give the place back.
+public protocol WaitLimiting: Sendable {
+  /// Takes a place for `principal`, or throws when either limit is already reached. A limit of zero
+  /// admits nobody.
+  func acquire(principal: PrincipalID, at instant: Date, global: Int, perPrincipalLimit: Int) throws
+    -> WaitPlace
+  func release(principal: PrincipalID, place: WaitPlace)
 }
 
 /// Counts the waits that are parked, overall and per principal, so that a few callers cannot hold
 /// every thread of the service. It also knows since when each principal is listening.
-public final class WaitQuota: ListeningRegistry, @unchecked Sendable {
+public final class WaitQuota: WaitLimiting, ListeningRegistry, @unchecked Sendable {
   private let lock = NSLock()
   private var started: [PrincipalID: [UInt64: Date]] = [:]
   private var nextNumber: UInt64 = 0
@@ -38,11 +50,9 @@ public final class WaitQuota: ListeningRegistry, @unchecked Sendable {
     lock.withLock { Set(started.keys) }
   }
 
-  /// Takes a place for `principal`, or throws when either limit is already reached. A limit of zero
-  /// admits nobody.
-  func acquire(principal: PrincipalID, at instant: Date, global: Int, perPrincipalLimit: Int) throws
-    -> WaitPlace
-  {
+  public func acquire(
+    principal: PrincipalID, at instant: Date, global: Int, perPrincipalLimit: Int
+  ) throws -> WaitPlace {
     try lock.withLock {
       guard total < global, started[principal, default: [:]].count < perPrincipalLimit else {
         throw MessagingError.tooManyWaiters
@@ -54,7 +64,7 @@ public final class WaitQuota: ListeningRegistry, @unchecked Sendable {
     }
   }
 
-  func release(principal: PrincipalID, place: WaitPlace) {
+  public func release(principal: PrincipalID, place: WaitPlace) {
     lock.withLock {
       guard started[principal]?.removeValue(forKey: place.number) != nil else { return }
       total -= 1
