@@ -40,6 +40,8 @@ public final class ServiceHost: @unchecked Sendable {
   /// the connection so that a late deadline never touches a descriptor that was reused.
   private var awaitingRequest: [Int32: UInt64] = [:]
   private var connectionCounter: UInt64 = 0
+  /// Connections that are serving an agent request, a parked wait included.
+  private var agentConnections = 0
 
   private init(
     runtime: ServiceRuntime, lock: InstanceLock, listener: Int32, socketPath: String,
@@ -270,7 +272,21 @@ public final class ServiceHost: @unchecked Sendable {
       reporter.report(error, operation: "read request")
       return
     }
+    // The deadline also covers the write: a client that stops reading is cut at the deadline
+    // instead of holding its connection for as long as it likes.
+    armDeadline(for: descriptor)
     send(response, over: stream, codec: codec)
+  }
+
+  private func armDeadline(for descriptor: Int32) {
+    state.lock()
+    connectionCounter += 1
+    let identity = connectionCounter
+    awaitingRequest[descriptor] = identity
+    state.unlock()
+    DispatchQueue.global().asyncAfter(deadline: .now() + requestDeadline) {
+      self.expireRequest(of: descriptor, identity: identity)
+    }
   }
 
   private func requestFinished(_ descriptor: Int32) {
@@ -323,12 +339,42 @@ public final class ServiceHost: @unchecked Sendable {
     } catch {
       return .failure(code: .badRequest, message: "the frame is not a request")
     }
+    let isAgentRequest = Self.agentOperations.contains(request.operation)
+    if isAgentRequest {
+      guard admitAgentRequest() else {
+        return .failure(
+          code: .tooManyConnections,
+          message: "the service keeps its last connections for the owner")
+      }
+    }
+    defer { if isAgentRequest { releaseAgentRequest() } }
     guard request.operation == "wait" else { return runtime.dispatcher.handle(request) }
     let cancellation = WaitCancellation()
     let watcher = watchForDisconnect(of: descriptor, cancelling: cancellation)
     defer { watcher?.stop() }
     let response = runtime.dispatcher.handle(request, cancellation: cancellation)
     return cancellation.isCancelled ? nil : response
+  }
+
+  /// The operations only an agent can make. They are the ones that can hold a connection for long.
+  private static let agentOperations: Set<String> = [
+    "send", "inbox", "read", "acknowledge", "wait",
+  ]
+
+  /// Agents may hold the connection limit minus the owner reserve, and always at least one.
+  private func admitAgentRequest() -> Bool {
+    let reserve = min(max(ownerReserve, 0), max(connectionLimit - 1, 0))
+    state.lock()
+    defer { state.unlock() }
+    guard agentConnections < connectionLimit - reserve else { return false }
+    agentConnections += 1
+    return true
+  }
+
+  private func releaseAgentRequest() {
+    state.lock()
+    agentConnections -= 1
+    state.unlock()
   }
 
   private func watchForDisconnect(of descriptor: Int32, cancelling cancellation: WaitCancellation)
