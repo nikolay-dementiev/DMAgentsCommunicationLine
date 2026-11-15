@@ -5,7 +5,7 @@ import Foundation
 import Testing
 
 @Suite struct BundledSettingsCatalogTests {
-  @Test func test_shippedCatalog_holdsTheV01KeysWithTheSpecifiedDefaults() throws {
+  @Test func test_shippedCatalog_holdsTheShippedKeysWithTheSpecifiedDefaults() throws {
     let catalog = try BundledSettingsCatalogSource.shipped.load()
     let defaults = Dictionary(
       uniqueKeysWithValues: catalog.definitions.map { ($0.key, $0.defaultValue) })
@@ -15,6 +15,8 @@ import Testing
         "store.busy_timeout": .integer(5000),
         "retention.messages.live": .integer(90),
         "retention.activity.live": .integer(90),
+        "retention.activity.max_rows": .integer(1_000_000),
+        "limits.activity.refusal_window": .integer(60),
         "cleanup.interval": .integer(300),
         "storage.budget": .integer(5_000_000_000),
         "storage.warning_percent": .integer(80),

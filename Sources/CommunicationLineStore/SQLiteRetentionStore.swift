@@ -40,6 +40,20 @@ public final class SQLiteRetentionStore: RetentionStore {
     }
   }
 
+  public func deleteActivity(beyondRows rows: Int) throws -> Int {
+    try store.database.transaction {
+      try store.database.execute("UPDATE activity_retention_gate SET open = 1")
+      let count = try deleted(
+        """
+        DELETE FROM activity WHERE id <= (
+          SELECT id FROM activity ORDER BY id DESC LIMIT 1 OFFSET ?1)
+        """,
+        [.integer(Int64(rows))])
+      try store.database.execute("UPDATE activity_retention_gate SET open = 0")
+      return count
+    }
+  }
+
   private func deleted(_ sql: String, _ bindings: [SQLiteValue] = []) throws -> Int {
     try store.database.transaction {
       try store.database.execute(sql, bindings)

@@ -23,6 +23,8 @@ public protocol RetentionStore {
   func deleteMessagesWithoutDeliveries() throws -> Int
   /// Deletes activity records older than `cutoff`.
   func deleteActivity(before cutoff: Date) throws -> Int
+  /// Deletes the oldest activity records until at most `rows` remain, whatever their age.
+  func deleteActivity(beyondRows rows: Int) throws -> Int
 }
 
 /// What the most recent cleanup run did, for the health report.
@@ -68,10 +70,15 @@ public struct CleanupService {
     let now = clock.now()
     let messageCutoff = try cutoff(now: now, key: "retention.messages.live")
     let activityCutoff = try cutoff(now: now, key: "retention.activity.live")
+    guard case .integer(let rowCap) = try settings.serviceValue(of: "retention.activity.max_rows"),
+      let maximumRows = Int(exactly: rowCap), maximumRows >= 1
+    else { throw CleanupError.invalidSetting("retention.activity.max_rows") }
     return try transactions.atomically {
       let deliveries = try store.deleteAcknowledgedDeliveries(before: messageCutoff)
       let messages = try store.deleteMessagesWithoutDeliveries()
-      let activity = try store.deleteActivity(before: activityCutoff)
+      let activity =
+        try store.deleteActivity(before: activityCutoff)
+        + store.deleteActivity(beyondRows: maximumRows)
       return CleanupResult(deliveries: deliveries, messages: messages, activity: activity)
     }
   }

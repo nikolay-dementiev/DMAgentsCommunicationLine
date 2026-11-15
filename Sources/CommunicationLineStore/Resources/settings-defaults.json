@@ -28,6 +28,24 @@
       "description": "How long activity records are kept before cleanup deletes them."
     },
     {
+      "key": "retention.activity.max_rows",
+      "type": "integer",
+      "unit": "records",
+      "default": 1000000,
+      "range": { "min": 1000, "max": 100000000 },
+      "scopes": ["global"],
+      "description": "The most activity records the store keeps. When it is exceeded, cleanup deletes the oldest records first, whatever their age."
+    },
+    {
+      "key": "limits.activity.refusal_window",
+      "type": "duration",
+      "unit": "seconds",
+      "default": 60,
+      "range": { "min": 0, "max": 3600 },
+      "scopes": ["global"],
+      "description": "Refused requests with the same outcome write at most one activity record per window; the next record says how many were left out. Zero records every refusal."
+    },
+    {
       "key": "cleanup.interval",
       "type": "duration",
       "unit": "seconds",

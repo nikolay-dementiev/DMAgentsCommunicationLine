@@ -8,6 +8,7 @@ public struct ActivityService {
   private let identity: IdentityService
   private let settings: SettingsService
   private let clock: any WallClock
+  private let throttle = RefusalThrottle()
 
   public init(
     store: any ActivityStore, identity: IdentityService, settings: SettingsService,
@@ -33,6 +34,24 @@ public struct ActivityService {
     try store.append(
       NewActivity(
         at: clock.now(), actor: actor, operation: operation, outcome: outcome, targets: bounded))
+  }
+
+  /// Records a refused request, unless a refusal with the same outcome was already recorded inside
+  /// `limits.activity.refusal_window`. The first record after that window lists how many were left
+  /// out as the target `suppressed:<n>`.
+  public func recordRefusal(
+    actor: @autoclosure () throws -> ActivityActor, operation: String, outcome: String
+  ) throws {
+    guard
+      case .integer(let seconds) = try settings.serviceValue(of: "limits.activity.refusal_window")
+    else { throw MessagingError.invalidSetting(key: "limits.activity.refusal_window") }
+    guard
+      let omitted = throttle.admit(
+        outcome: outcome, at: clock.now(), window: TimeInterval(seconds))
+    else { return }
+    try record(
+      actor: try actor(), operation: operation, outcome: outcome,
+      targets: omitted > 0 ? ["suppressed:\(omitted)"] : [])
   }
 
   /// Who a token belongs to. A missing, unknown, revoked or disabled one is `unauthenticated`.

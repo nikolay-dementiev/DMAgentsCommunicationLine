@@ -104,9 +104,16 @@ public struct RequestDispatcher: @unchecked Sendable {
 
   private func recordFailure(of request: WireRequest, as name: String, response: WireResponse) {
     do {
-      try activity.record(
-        actor: try actor(of: request), operation: name,
-        outcome: response.failure?.code.rawValue ?? "internal", targets: [])
+      let outcome = response.failure?.code.rawValue ?? "internal"
+      switch response.failure?.code.errorClass {
+      case .authentication?, .permission?, .invalidInput?:
+        // A client that is refused over and over must not be able to fill the log.
+        try activity.recordRefusal(
+          actor: try actor(of: request), operation: name, outcome: outcome)
+      default:
+        try activity.record(
+          actor: try actor(of: request), operation: name, outcome: outcome, targets: [])
+      }
     } catch {
       reporter.report(error, operation: "record activity")
     }
