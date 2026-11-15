@@ -87,11 +87,16 @@ struct SystemLaunchdTests {
 /// A listener that behaves as a script says for each request: it answers, stays silent or sends
 /// bytes that are not a response.
 private final class ScriptedResponder: @unchecked Sendable {
-  enum Behavior { case answer, silent, garbage }
+  enum Behavior {
+    case answer, silent, garbage
+    /// Silent, and keeps its stream until the semaphore is signalled after the connection ends.
+    case silentUntil(DispatchSemaphore)
+  }
 
   private let lock = NSLock()
   private var listener: Int32
   private var held: [Int32] = []
+  private let serving = DispatchGroup()
   private let behavior: @Sendable (String) -> Behavior
 
   init(path: String, behavior: @escaping @Sendable (String) -> Behavior) throws {
@@ -101,26 +106,39 @@ private final class ScriptedResponder: @unchecked Sendable {
     guard Darwin.listen(listener, 8) == 0 else { throw POSIXError(.EIO) }
     let descriptor = listener
     Thread.detachNewThread { [self] in
+      // The accept loop owns the listener and closes it once, when `stop()` has shut it down.
+      defer { close(descriptor) }
       while true {
         let connection = accept(descriptor, nil, nil)
         if connection < 0 { return }
         lock.withLock { held.append(connection) }
-        Thread.detachNewThread { [self] in serve(connection) }
+        serving.enter()
+        Thread.detachNewThread { [self] in
+          serve(connection)
+          serving.leave()
+        }
       }
     }
   }
 
+  /// Returns once every connection that was accepted has been served and its descriptor closed.
+  func waitUntilIdle() { serving.wait() }
+
   func stop() {
-    let open = lock.withLock { () -> [Int32] in
-      defer { held = [] }
-      return held + [listener]
+    // Under the lock, so that a connection is never shut down after the stream that serves it has
+    // given its number back.
+    lock.withLock {
+      for descriptor in held + [listener] { shutdown(descriptor, SHUT_RDWR) }
+      held = []
     }
-    for descriptor in open { shutdown(descriptor, SHUT_RDWR) }
-    for descriptor in open { close(descriptor) }
+    // Only shut down: every connection is closed by the stream that serves it, and the listener by
+    // its accept loop. Closing a number here as well would close it twice, and the second close
+    // could hit an unrelated descriptor that reused the number in another test.
   }
 
   private func serve(_ connection: Int32) {
     let stream = FileDescriptorStream(descriptor: connection)
+    defer { lock.withLock { held.removeAll { $0 == connection } } }
     let codec = FrameCodec(maximumSize: 65_536)
     guard let payload = try? codec.readFrame(from: stream),
       let request = try? WireCoding.decodeRequest(payload)
@@ -132,8 +150,37 @@ private final class ScriptedResponder: @unchecked Sendable {
     case .garbage:
       try? codec.writeFrame(Data("not a response".utf8), to: stream)
     case .silent:
-      // The stream closes its descriptor when it goes away, so keep it open for a good while.
-      Thread.sleep(forTimeInterval: 20)
+      // Say nothing until the connection is shut down, by the client or by `stop()`.
+      _ = try? codec.readFrame(from: stream)
+    case .silentUntil(let release):
+      _ = try? codec.readFrame(from: stream)
+      release.wait()
+    }
+  }
+}
+
+struct ScriptedResponderTests {
+  @Test func test_stopping_closesEachDescriptorOnce_soNoOtherDescriptorIsClosedWithIt() throws {
+    let home = try TemporaryHome()
+    let path = home.url.appendingPathComponent("once.sock").path
+    let release = DispatchSemaphore(value: 0)
+    let responder = try ScriptedResponder(path: path) { _ in .silentUntil(release) }
+    // The request is read and the responder goes quiet; the client gives up after its deadline.
+    _ = try? SocketServiceConnection(socketPath: path).exchange(
+      WireRequest(token: nil, operation: "health"), deadline: Date().addingTimeInterval(0.3))
+    responder.stop()
+    // Descriptors opened now take the lowest free numbers, which are the ones just given back.
+    let others = (0..<8).map { _ in open("/dev/null", O_RDONLY) }
+    defer { others.filter { $0 >= 0 }.forEach { close($0) } }
+
+    // Only now may the serving stream let go of its descriptor.
+    release.signal()
+    responder.waitUntilIdle()
+
+    for descriptor in others {
+      #expect(
+        descriptor >= 0 && fcntl(descriptor, F_GETFD) != -1,
+        "descriptor \(descriptor) is still open: the responder closed only its own")
     }
   }
 }
