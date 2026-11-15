@@ -96,8 +96,12 @@ struct ParkedWaitReauthenticationTests {
     defer { setup.host.stop() }
     let answer = parkWait(setup)
 
+    // Disabling revokes the credentials and enabling does not bring them back, so the principal
+    // is enabled again at the next look but its old credential stays revoked.
     _ = try ask(
-      setup.host, "credential.issue", token: setup.owner, ["principal": .string(setup.agentID)])
+      setup.host, "principal.disable", token: setup.owner, ["principal": .string(setup.agentID)])
+    _ = try ask(
+      setup.host, "principal.enable", token: setup.owner, ["principal": .string(setup.agentID)])
 
     #expect(
       answer.finished.wait(timeout: .now() + 4) == .success,

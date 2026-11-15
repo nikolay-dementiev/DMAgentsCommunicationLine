@@ -122,7 +122,10 @@ private final class BackgroundWait: @unchecked Sendable {
     _ = try fixture.messages.wait(token: fixture.alphaPeerToken, timeout: 3600)
     _ = try fixture.messages.wait(token: fixture.alphaPeerToken, timeout: 5)
 
-    #expect(fixture.recorder.waitTimeouts == [900, 60, 5], "default, capped, shorter request kept")
+    // A park is cut into slices of messaging.wait_recheck, so the time of each call is the sum.
+    let parked: TimeInterval = fixture.recorder.waitTimeouts.reduce(0) { $0 + $1 }
+    let expected: TimeInterval = 965
+    #expect(parked == expected, "default, capped, shorter request kept")
   }
 
   @Test func test_wait_zeroCatalogWait_neverParks() throws {
@@ -225,6 +228,9 @@ private final class BackgroundWait: @unchecked Sendable {
     let result = try fixture.messages.wait(token: fixture.alphaPeerToken, timeout: 30)
 
     #expect(result == .timedOut, "a wake with an empty inbox is not mail")
-    #expect(arrival.timeouts == [30, 30], "it parked again for the time that was left")
+    let rest: TimeInterval = arrival.timeouts.dropFirst().reduce(0) { $0 + $1 }
+    #expect(rest == 30, "it parked again for the time that was left, in slices")
+    #expect(
+      arrival.timeouts.allSatisfy { $0 <= 5 }, "no slice is longer than messaging.wait_recheck")
   }
 }

@@ -120,13 +120,20 @@ public struct MessageService {
     let limit = TimeInterval(try setting("messaging.wait", token: token, allowingZero: true))
     let allowed = min(timeout ?? limit, limit)
     let deadline = clock.now().addingTimeInterval(allowed)
+    let recheck = TimeInterval(try setting("messaging.wait_recheck", token: token))
     var place: WaitPlace?
     defer { if let place { waitLimiter.release(principal: recipient.id, place: place) } }
+    // Time spent in parks that ran out; it bounds the loop even when the clock does not move.
+    var slept: TimeInterval = 0
+    var hasParked = false
     while true {
       let ticket = arrival.ticket(for: recipient.id)
+      // A wait that has parked looks again at who it is working for, so a principal that was
+      // disabled or a credential that was revoked ends the wait instead of reading mail.
+      if hasParked { _ = try requirePrincipal(token) }
       if try store.hasPending(for: recipient.id) { return .mail }
       if cancellation?.isCancelled == true { return .timedOut }
-      let remaining = deadline.timeIntervalSince(clock.now())
+      let remaining = min(deadline.timeIntervalSince(clock.now()), allowed - slept)
       guard allowed > 0, remaining > 0 else { return .timedOut }
       if place == nil {
         place = try waitLimiter.acquire(
@@ -135,8 +142,14 @@ public struct MessageService {
           perPrincipalLimit: try setting("limits.waits.principal", token: token, allowingZero: true)
         )
       }
-      switch arrival.wait(for: recipient.id, since: ticket, timeout: remaining) {
-      case .timedOut: return try store.hasPending(for: recipient.id) ? .mail : .timedOut
+      let slice = min(remaining, recheck)
+      hasParked = true
+      switch arrival.wait(for: recipient.id, since: ticket, timeout: slice) {
+      case .timedOut:
+        slept += slice
+        if slice < remaining { continue }
+        _ = try requirePrincipal(token)
+        return try store.hasPending(for: recipient.id) ? .mail : .timedOut
       case .signalled: continue
       }
     }
