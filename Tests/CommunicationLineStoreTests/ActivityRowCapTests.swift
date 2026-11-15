@@ -35,6 +35,18 @@ import Testing
     }
   }
 
+  @Test func test_aCapBelowOne_neverDeletesTheNewestRecord() throws {
+    let fixture = try Fixture()
+    try fixture.append(3)
+    let store = SQLiteRetentionStore(store: fixture.world.identity.store)
+
+    let deleted = try store.deleteActivity(beyondRows: 0)
+
+    #expect(deleted == 2, "the two older records go")
+    #expect(
+      try fixture.world.count("activity") == 1, "the newest stays, so the log is never emptied by a cap")
+  }
+
   @Test func test_overTheRowCap_cleanupDeletesTheOldestRecordsFirst() throws {
     let fixture = try Fixture(maxRows: 1000)
     try fixture.append(1005)
