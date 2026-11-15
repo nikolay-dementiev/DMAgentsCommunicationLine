@@ -55,6 +55,11 @@ Deciding who may change a setting is not part of this layer.
 | `limits.waits.principal` | integer, waits | 2 | 0..64 | global |
 | `limits.connections` | integer, connections | 256 | 1..4096 | global |
 | `service.request_deadline` | duration, seconds | 10 | 1..300 | global |
+| `limits.connections.owner_reserve` | integer, connections | 8 | 0..1024 | global |
+| `retention.activity.max_rows` | integer, records | 1000000 | 1000..100000000 | global |
+| `limits.activity.refusal_window` | duration, seconds | 60 | 0..3600 | global |
+| `storage.refusal_percent` | integer, percent | 95 | 1..100 | global |
+| `messaging.wait_recheck` | duration, seconds | 5 | 1..60 | global |
 | `service.frame_max` | bytes | 2097152 | 4096..16777216 | global |
 
 `messaging.wait` is the default and the maximum time a wait may stay parked; zero turns parked waits off, so a wait only reports pending mail.
@@ -74,8 +79,16 @@ Where the design has a row, the v0.1 key uses its name and default:
 | `limits.waits.global`, `limits.waits.principal` | The `global` (128) and `principal` (2) members of the composite `limits.waits` row. A v0.1 proposal that makes each a key of its own. Zero admits no parked wait |
 
 `limits.connections` and `service.request_deadline` have no design row and are v0.1 proposals. A connection past
-`limits.connections` is closed without an answer. `service.request_deadline` is the time a client has to send its
-whole request, counted from the accept; the per-read timeout alone cannot stop a client that sends one byte at a time.
+`limits.connections` is answered `too_many_connections` and closed. `service.request_deadline` is the time a client has to send its
+whole request, counted from the accept, and to take the answer; the per-read timeout alone cannot stop a client that sends one byte at a time.
 `cleanup.interval`, `limits.connections` and `service.request_deadline` are read once, at start. A zero in the design
 means "disabled"; the v0.1 ranges for these three start at 1.
+
+The keys added in 0.2 (W2) are v0.2 proposals and stay open until the 0.2 release:
+
+- `limits.connections.owner_reserve`: how many of `limits.connections` agents cannot take (see [service](service.md#connections-and-descriptors)). Read once, at start. Zero keeps nothing back; the service always leaves at least one place to agents.
+- `retention.activity.max_rows`: cleanup deletes the oldest activity records beyond this number, whatever their age.
+- `limits.activity.refusal_window`: a refusal with the same outcome is recorded once per window, the next record names how many were left out. Zero records every refusal.
+- `storage.refusal_percent`: from this share of `storage.budget`, `send` is refused with `storage_full`. Keep it above `storage.warning_percent` so the warning comes first; the service does not enforce the order.
+- `messaging.wait_recheck`: how often a parked wait checks that its principal may still read.
 The retention keys count whole days from the time of the newest acknowledgement of a message (mail: a message with several recipients is judged when all of them have acknowledged) or of the request (activity).

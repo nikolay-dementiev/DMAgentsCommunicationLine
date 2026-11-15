@@ -129,3 +129,15 @@ New and open until the v0.1 release.
 | `settings_audit_id_is_never_minus_one` | The same for `settings_audit` and the guard of version 5. |
 
 Version 6 does not repair a database that already holds a row with id -1 in `activity` or `settings_audit`. Such a row could only be written by an explicit insert, and versions 4 and 5 were never released, so only a development database can carry one; it has to be recreated.
+
+## Version 7
+
+New and open until the v0.2 release.
+
+| Object | Rule |
+|---|---|
+| table `pending_counts` | One row per recipient: `recipient` (primary key) and `count` (at least 0), the number of its pending deliveries. `WITHOUT ROWID`. A recipient with no row has no pending delivery |
+| trigger `deliveries_count_a_new_pending` | After an insert of a delivery in state `pending`, adds 1 to the recipient's count (creating the row) |
+| trigger `deliveries_count_an_acknowledged` | After a delivery changes from `pending` to `acknowledged`, subtracts 1 |
+
+The migration fills `pending_counts` from the deliveries that are pending when it runs. The inbox quota reads this row inside the write transaction that stores the message, so the check and the insert cannot be separated by another writer and the quota does not scan the deliveries.

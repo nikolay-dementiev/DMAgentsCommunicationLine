@@ -130,7 +130,7 @@ The table is stable. A failure is never 0.
 | 5 | permission | `owner_required`, `agent_required`, `recipient_refused` |
 | 6 | not found | `unknown_principal`, `unknown_family`, `unknown_recipient`, `message_unavailable`, `unknown_grant`, `unknown_key` |
 | 7 | invalid input | A value the service refused (names, rules, limits such as `too_many_recipients`, settings, expiry) |
-| 8 | protocol | `bad_request`, `frame_too_large`, `recipient_inbox_full`, `too_many_waiters`, or an answer that is not a response |
+| 8 | protocol | `bad_request`, `frame_too_large`, `recipient_inbox_full`, `too_many_waiters`, `too_many_connections`, `storage_full`, or an answer that is not a response |
 | 9 | timed out | `wait` ended without mail |
 | 10 | token input | The token file is missing, unreadable, not private, or empty, or no token was supplied |
 | 11 | not installed | `wait --until-mail` found no store folder: commline is not installed here, or was removed |

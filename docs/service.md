@@ -145,6 +145,8 @@ Each code belongs to one class; the CLI maps the class to its exit status.
 | `too_many_recipients` | invalid input | A message with more distinct recipients than `wire.recipients` |
 | `recipient_inbox_full` | request | A recipient already has `quota.messages.assigned_per_principal` pending deliveries. Nothing is stored and nothing is deleted |
 | `too_many_waiters` | request | The caller or the service already has the most parked waits `limits.waits.principal` / `limits.waits.global` allow |
+| `too_many_connections` | request | The service has no free connection for the request: an agent operation when agent requests already fill `limits.connections` minus `limits.connections.owner_reserve`, or any request on a connection past `limits.connections` (see [Connections](#connections-and-descriptors)). Nothing was done; try again shortly |
+| `storage_full` | request | The database has reached `storage.refusal_percent` of `storage.budget`, so `send` is refused. Reading, acknowledging, waiting, cleanup and every owner operation keep working; cleanup frees space and the refusal ends by itself |
 | `expiry_in_the_past` | invalid input | A grant that has already expired |
 | `scope_not_allowed`, `subject_required`, `subject_not_allowed`, `invalid_value` | invalid input | A setting change the catalog refuses |
 | `internal` | internal | Anything unexpected. The detail goes to the service's standard error, never to the caller |
@@ -155,7 +157,9 @@ Every request the service handles leaves one record: the time from the service c
 `unauthenticated` or `principal:<id>`), the operation, the outcome (`ok` or the error code) and the ids it touched.
 Refused and failed requests are recorded, and so are the owner credential bootstrap and its replacement. The record
 of a request that succeeds is written in the transaction of its effect; a request that fails leaves no effect and is
-recorded afterwards. A `wait` is recorded when it ends. A token, a subject, a body or the text of an unknown
+recorded afterwards. A `wait` is recorded when it ends, and so is `health.cleanup`: both are recorded after their work is done, outside any transaction, so a record that cannot be written (disk full, for example) is reported on standard error and never undoes the work or the answer.
+
+Flood control. A client that sends refused requests in a loop would otherwise fill the log. A refusal is recorded at most once per `limits.activity.refusal_window` seconds for each outcome (the error code); the first record after the window lists how many were left out as the target `suppressed:<n>`. With the window at 0 every refusal is recorded. Only refusals are throttled; a request that succeeds, and any other failure, is always recorded. A second bound is the number of rows: cleanup deletes the oldest records beyond `retention.activity.max_rows`. A token, a subject, a body or the text of an unknown
 operation name is never recorded. The log is append-only; only retention deletes from it. The schema is in
 [schema](schema.md).
 
@@ -164,10 +168,10 @@ operation name is never recorded. The log is append-only; only retention deletes
 Cleanup runs every `cleanup.interval` seconds and when the owner sends `health.cleanup`. In one transaction it
 deletes the deliveries of each message whose deliveries are all acknowledged and whose newest acknowledgement is
 more than `retention.messages.live` days old (a message with a pending delivery keeps all of them), then the
-messages that have no delivery left, then activity older than `retention.activity.live` days. Pending mail is never deleted: a
+messages that have no delivery left, then activity older than `retention.activity.live` days and activity beyond the newest `retention.activity.max_rows` records. Pending mail is never deleted: a
 trigger in the database refuses it, independently of this code. A failed scheduled run is reported on standard error
 and tried again at the next interval. The service remembers the last run (time and counts, or that it failed) for the
-health report; the memory lasts as long as the process.
+health report; the memory lasts as long as the process. The run is committed first and recorded in the activity log afterwards; when the record cannot be written, the cleanup still counts as done and the health report says so (`cleanup_not_recorded`).
 
 ## Health report
 
@@ -181,7 +185,8 @@ health report; the memory lasts as long as the process.
 | `overdue_count` | All deliveries pending longer than `health.threshold` |
 | `overdue` | The oldest `messaging.page_size` of them: `message`, `recipient`, `age_seconds` |
 | `storage` | `used_bytes` (pages in use, not the free ones), `budget_bytes`, `warning_percent` |
-| `warnings` | `storage_budget` while `used_bytes` is at or past `warning_percent` of `budget_bytes`. It follows the current use, so it clears by itself when cleanup frees space |
+| `storage` also holds | `refusal_percent`: from this share of `budget_bytes` on, `send` is refused with `storage_full` |
+| `warnings` | `storage_budget` while `used_bytes` is at or past `warning_percent` of `budget_bytes`; `storage_full` while `used_bytes` is at or past `refusal_percent`; `cleanup_not_recorded` while the last cleanup ran but its activity record could not be written. They follow the current state, so the first two clear by themselves when cleanup frees space and the third when the next cleanup is recorded |
 | `last_cleanup` | `null`, or `at_ms` and `ok`; when `ok`, also `deliveries`, `messages`, `activity` |
 
 `health.threshold` applies per recipient: the principal's own value, then its family's, then the global one. An
@@ -194,15 +199,27 @@ acknowledged delivery is never overdue.
 | Recipients per message | `wire.recipients` | `too_many_recipients` |
 | Pending deliveries per recipient | `quota.messages.assigned_per_principal` | `recipient_inbox_full` |
 | Parked waits per principal and in all | `limits.waits.principal`, `limits.waits.global` | `too_many_waiters`. Only a wait that would park needs a place; one that finds mail at once does not |
-| Open connections | `limits.connections` | The new connection is closed without an answer |
-| Time to send a request | `service.request_deadline` | The connection is closed. It counts from the accept to the last byte of the request, so a client that trickles bytes cannot hold a thread. A parked `wait` is not cut off: its request was complete |
+| Open connections | `limits.connections` | `too_many_connections`. See [Connections and descriptors](#connections-and-descriptors) |
+| Connections kept for the owner | `limits.connections.owner_reserve` | An agent operation past the share left to agents gets `too_many_connections`; an owner operation is served |
+| Time to send a request and to receive the answer | `service.request_deadline` | The connection is closed. It counts from the accept to the last byte of the request, so a client that trickles bytes cannot hold a thread; writing the response has the same bound, so a client that does not read cannot hold one either. A parked `wait` is not cut off: its request was complete |
+| Database size | `storage.budget`, `storage.refusal_percent` | `storage_full` for `send` |
+| Activity log | `retention.activity.max_rows`, `limits.activity.refusal_window` | Oldest rows are deleted by cleanup; repeated refusals are recorded once per window |
+| Re-authentication of a parked `wait` | `messaging.wait_recheck` | A parked wait checks its token at least every this many seconds; a revoked or disabled token ends it with `token_revoked` or `principal_disabled` |
+
+## Connections and descriptors
+
+The service raises its soft limit of open files (`RLIMIT_NOFILE`) at start as far as the hard limit and the system allow (`kern.maxfilesperproc`). A connection can hold up to three descriptors (the socket and what watches it while a `wait` is parked) and the service keeps 64 for itself, so the limit in force gives at most `(limit - 64) / 3` connections. When `limits.connections` is larger than that, the service uses the smaller number and writes a line to standard error under the operation `descriptor limit`; it does not stop.
+
+A connection past the limit is accepted only to be refused: the service reads its request and answers `too_many_connections` at once, so the client learns the reason instead of seeing a closed socket. A small number of such refusals is held at a time; beyond it the connection is closed without an answer.
+
+Owner reserve: the agent operations (`send`, `inbox`, `read`, `acknowledge`, `wait`) are the ones that can hold a connection for long. The service counts the agent requests in flight and admits at most `limits.connections` minus `limits.connections.owner_reserve` of them; a further one is answered `too_many_connections`. Every other operation (the owner's, the credential bootstrap, `health`) is not counted against that share, so a flood of agent requests cannot lock the owner out. The reserve is read at start and is cut down so that at least one agent request is always admitted.
 
 ## Known limits
 
-- A parked `wait` authenticates when it starts; a token revoked meanwhile ends it only at its timeout.
+- A parked `wait` re-checks its token every `messaging.wait_recheck` seconds, not at the moment of revocation: a token revoked meanwhile ends the wait within that interval.
 - While a `wait` is parked the service watches the connection. When the client disconnects (end of stream or hang-up) the wait ends at once and gives back its thread, its connection place and its waiter slot; the answer is dropped and the wait is still recorded in the activity log. A client therefore must not close its sending side after the request: it sends one request and only reads until the answer.
-- The service answers nothing to a connection it refuses for being over `limits.connections`; the client sees
-  the connection closed.
+- Beyond a small number of connections refused at the same time the service closes the connection without an answer; the client sees it closed.
+- `limits.connections.owner_reserve` is read at start; changing it needs a restart.
 - Health scans every pending delivery older than the moment of the call to find the overdue ones, because the
   threshold can differ per principal. The scan is bounded by the pending quota of each principal.
 - The memory of the last cleanup is lost when the service restarts.
