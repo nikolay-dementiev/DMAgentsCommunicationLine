@@ -39,7 +39,7 @@ public struct RequestDispatcher: @unchecked Sendable {
   let health: HealthService
   let directory: DirectoryService
   private let transactions: any TransactionRunner
-  private let reporter: any FailureReporter
+  let reporter: any FailureReporter
 
   init(
     identity: IdentityService, rights: RightsService, settings: SettingsService,
@@ -77,11 +77,14 @@ public struct RequestDispatcher: @unchecked Sendable {
         throw RequestError.badRequest("unknown operation \(request.operation)")
       }
       let result: WireValue
-      if operation == .wait || operation == .healthCleanup {
+      if operation == .wait {
         let actor = try actor(of: request)
         result = try perform(
           operation, request: request, arguments: arguments, cancellation: cancellation)
         recordOutcomeOfFinishedWork(actor: actor, operation: operation)
+      } else if operation == .healthCleanup {
+        // Not inside a transaction of the request: cleanup commits on its own and records itself.
+        result = try perform(operation, request: request, arguments: arguments)
       } else {
         result = try transactions.atomically {
           let actor = try actor(of: request)
@@ -107,7 +110,6 @@ public struct RequestDispatcher: @unchecked Sendable {
       try activity.record(actor: actor, operation: operation.rawValue, outcome: "ok", targets: [])
     } catch {
       reporter.report(error, operation: "record activity")
-      if operation == .healthCleanup { cleanup.noteRecordFailure() }
     }
   }
 
@@ -131,7 +133,7 @@ public struct RequestDispatcher: @unchecked Sendable {
 
   /// A token that cannot even be decoded counts as unauthenticated, like an unknown one; a storage
   /// failure is thrown.
-  private func actor(of request: WireRequest) throws -> ActivityActor {
+  func actor(of request: WireRequest) throws -> ActivityActor {
     do {
       return try activity.actor(for: try optionalToken(of: request))
     } catch IdentityError.unknownToken {
@@ -156,7 +158,7 @@ public struct RequestDispatcher: @unchecked Sendable {
         try health.report(
           ownerToken: try token(of: request), family: try arguments.optionalString("family")))
     case .healthCleanup:
-      return try performCleanup(token: try token(of: request))
+      return try performCleanup(request: request, token: try token(of: request))
     default:
       return try performOwner(operation, token: try token(of: request), arguments: arguments)
     }

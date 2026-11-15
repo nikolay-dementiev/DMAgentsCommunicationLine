@@ -13,14 +13,23 @@ extension RequestDispatcher {
   }
 
   /// The cleanup commits in a transaction of its own and is remembered as the last cleanup only
-  /// after that commit. The request's activity record is written afterwards and cannot undo it.
-  func performCleanup(token: CredentialToken) throws -> WireValue {
+  /// after that commit. The request's activity record is written afterwards and cannot undo it: a
+  /// record that cannot be written is reported, and noted on this run only.
+  func performCleanup(request: WireRequest, token: CredentialToken) throws -> WireValue {
+    let caller = try actor(of: request)
     try identity.authenticateOwner(token)
-    let result = try cleanup.run()
+    let run = try cleanup.perform()
+    do {
+      try activity.record(
+        actor: caller, operation: Operation.healthCleanup.rawValue, outcome: "ok", targets: [])
+    } catch {
+      reporter.report(error, operation: "record activity")
+      cleanup.noteRecordFailure(of: run)
+    }
     return .object([
-      "deliveries": .integer(Int64(result.deliveries)),
-      "messages": .integer(Int64(result.messages)),
-      "activity": .integer(Int64(result.activity)),
+      "deliveries": .integer(Int64(run.result.deliveries)),
+      "messages": .integer(Int64(run.result.messages)),
+      "activity": .integer(Int64(run.result.activity)),
     ])
   }
 
