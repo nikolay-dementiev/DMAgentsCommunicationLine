@@ -48,7 +48,8 @@ public final class SQLiteRetentionStore: RetentionStore {
         DELETE FROM activity WHERE id <= (
           SELECT id FROM activity ORDER BY id DESC LIMIT 1 OFFSET ?1)
         """,
-        [.integer(Int64(rows))])
+        // A negative offset counts as zero in SQLite, which would delete the newest record too.
+        [.integer(Int64(max(rows, 1)))])
       try store.database.execute("UPDATE activity_retention_gate SET open = 0")
       return count
     }
