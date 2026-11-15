@@ -30,6 +30,7 @@ import Testing
         "limits.waits.global": .integer(128),
         "limits.waits.principal": .integer(2),
         "limits.connections": .integer(256),
+        "limits.connections.owner_reserve": .integer(8),
         "service.request_deadline": .integer(10),
         "service.frame_max": .integer(2_097_152),
       ], "the shipped keys and defaults")

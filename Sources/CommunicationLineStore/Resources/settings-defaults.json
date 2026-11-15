@@ -163,6 +163,15 @@
       "description": "The most connections the service keeps open at once. A connection past it is closed without an answer. The service reads it once, at start."
     },
     {
+      "key": "limits.connections.owner_reserve",
+      "type": "integer",
+      "unit": "connections",
+      "default": 8,
+      "range": { "min": 0, "max": 1024 },
+      "scopes": ["global"],
+      "description": "The connections kept for the owner. Agent requests, parked waits included, are refused with too_many_connections once agents hold limits.connections minus this reserve. At least one connection stays open to agents. The service reads it once, at start."
+    },
+    {
       "key": "service.request_deadline",
       "type": "duration",
       "unit": "seconds",

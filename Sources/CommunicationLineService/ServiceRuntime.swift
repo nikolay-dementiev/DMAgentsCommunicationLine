@@ -26,6 +26,8 @@ public final class ServiceRuntime {
   public let cleanup: CleanupRunner
   /// The most connections open at once, from `limits.connections` at start.
   public let connectionLimit: Int
+  /// The connections kept for the owner, from `limits.connections.owner_reserve` at start.
+  public let ownerReserve: Int
   /// How long a client has to send its request, from `service.request_deadline` at start.
   public let requestDeadline: TimeInterval
   private let store: SQLiteStore
@@ -33,10 +35,11 @@ public final class ServiceRuntime {
 
   private init(
     dispatcher: RequestDispatcher, frameMaximum: Int, cleanupInterval: TimeInterval,
-    cleanup: CleanupRunner, connectionLimit: Int, requestDeadline: TimeInterval,
-    store: SQLiteStore, arrival: InProcessMailArrival
+    cleanup: CleanupRunner, connectionLimit: Int, ownerReserve: Int,
+    requestDeadline: TimeInterval, store: SQLiteStore, arrival: InProcessMailArrival
   ) {
     self.connectionLimit = connectionLimit
+    self.ownerReserve = ownerReserve
     self.requestDeadline = requestDeadline
     self.cleanupInterval = cleanupInterval
     self.cleanup = cleanup
@@ -99,6 +102,7 @@ public final class ServiceRuntime {
       dispatcher: dispatcher, frameMaximum: frameMaximum,
       cleanupInterval: try positiveSeconds("cleanup.interval", settings), cleanup: cleanup,
       connectionLimit: Int(try positiveSeconds("limits.connections", settings)),
+      ownerReserve: try nonNegativeInteger("limits.connections.owner_reserve", settings),
       requestDeadline: try positiveSeconds("service.request_deadline", settings), store: store,
       arrival: arrival)
   }
@@ -121,6 +125,14 @@ public final class ServiceRuntime {
       throw ServiceRuntimeError.missingSetting(key)
     }
     return TimeInterval(value)
+  }
+
+  /// A catalog integer that may be zero, as a number.
+  private static func nonNegativeInteger(_ key: String, _ settings: SettingsService) throws -> Int {
+    guard case .integer(let value) = try settings.serviceValue(of: key), value >= 0,
+      let number = Int(exactly: value)
+    else { throw ServiceRuntimeError.missingSetting(key) }
+    return number
   }
 
   private static func integerDefault(of key: String, in catalog: SettingsCatalog) throws -> Int64 {

@@ -30,6 +30,7 @@ public final class ServiceHost: @unchecked Sendable {
   private let reporter: any FailureReporter
   private let cleanupInterval: TimeInterval
   private let connectionLimit: Int
+  private let ownerReserve: Int
   private let requestDeadline: TimeInterval
   private let state = NSCondition()
   private var isStopped = false
@@ -44,10 +45,11 @@ public final class ServiceHost: @unchecked Sendable {
     runtime: ServiceRuntime, lock: InstanceLock, listener: Int32, socketPath: String,
     peerReader: any PeerCredentialReader, requestTimeout: TimeInterval,
     reporter: any FailureReporter, cleanupInterval: TimeInterval, connectionLimit: Int,
-    requestDeadline: TimeInterval
+    ownerReserve: Int, requestDeadline: TimeInterval
   ) {
     self.cleanupInterval = cleanupInterval
     self.connectionLimit = connectionLimit
+    self.ownerReserve = ownerReserve
     self.requestDeadline = requestDeadline
     self.runtime = runtime
     self.lock = lock
@@ -64,7 +66,7 @@ public final class ServiceHost: @unchecked Sendable {
     storeFolder: URL, peerReader: any PeerCredentialReader = SystemPeerCredentialReader(),
     requestTimeout: TimeInterval = 10, reporter: any FailureReporter = StandardErrorReporter(),
     userID: UInt32 = UInt32(geteuid()), clock: (any WallClock)? = nil,
-    cleanupInterval: TimeInterval? = nil, connectionLimit: Int? = nil,
+    cleanupInterval: TimeInterval? = nil, connectionLimit: Int? = nil, ownerReserve: Int? = nil,
     requestDeadline: TimeInterval? = nil
   ) throws -> ServiceHost {
     try StoreFolder.prepare(storeFolder, waitingUpTo: 5000)
@@ -79,6 +81,7 @@ public final class ServiceHost: @unchecked Sendable {
       requestTimeout: requestTimeout, reporter: reporter,
       cleanupInterval: cleanupInterval ?? runtime.cleanupInterval,
       connectionLimit: connectionLimit ?? runtime.connectionLimit,
+      ownerReserve: ownerReserve ?? runtime.ownerReserve,
       requestDeadline: requestDeadline ?? runtime.requestDeadline)
     Thread.detachNewThread { host.acceptLoop() }
     Thread.detachNewThread { host.cleanupLoop() }
