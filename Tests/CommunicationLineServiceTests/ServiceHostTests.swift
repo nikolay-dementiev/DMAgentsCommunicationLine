@@ -191,7 +191,7 @@ struct ServiceHostTests {
     let answer = try FrameCodec(maximumSize: host.frameMaximum).readFrame(from: stream)
 
     #expect(answer == nil, "the service closed the silent connection")
-    #expect(Date().timeIntervalSince(started) < 5, "it did so after the timeout, not never")
+    #expect(Date().timeIntervalSince(started) < 60, "it did so after the timeout, not never")
   }
 
   @Test func test_stop_removesTheSocketAndEndsAParkedWait() throws {
@@ -284,13 +284,14 @@ struct ServiceHostTests {
       }
       done.signal()
     }
-    Thread.sleep(forTimeInterval: 0.5)
+    #expect(host.waitUntilParked(ownerToken: owner, count: 1), "the wait has parked")
 
     let started = Date()
     host.stop()
 
-    #expect(Date().timeIntervalSince(started) < 1.5, "stopping does not sit out the grace period")
-    #expect(done.wait(timeout: .now() + 5) == .success, "the parked client got an answer")
+    // The wait would otherwise last 30 seconds; the bound only has to tell that apart.
+    #expect(Date().timeIntervalSince(started) < 15, "stopping does not sit out the grace period")
+    #expect(done.wait(timeout: .now() + 60) == .success, "the parked client got an answer")
     #expect(
       (try? outcome.value?.get())?.isSuccess == true,
       "the parked client was answered, not cut off")
@@ -434,7 +435,7 @@ struct ConnectionLimitTests {
   @Test func test_aConnectionPastTheLimit_isAnsweredAtOnce_andAFreedPlaceIsUsable() throws {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
-    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 5, connectionLimit: 2)
+    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 120, connectionLimit: 2)
     defer { host.stop() }
     let first = try UnixSocketClient.connect(path: host.socketPath)
     let second = try UnixSocketClient.connect(path: host.socketPath)
@@ -446,9 +447,9 @@ struct ConnectionLimitTests {
 
     #expect(
       answer.failure?.code == .tooManyConnections, "the service said why it would not take it")
-    #expect(Date().timeIntervalSince(started) < 2, "it refused at once, not after the timeout")
+    #expect(Date().timeIntervalSince(started) < 60, "it refused at once, not after the timeout")
     first.close()
-    let deadline = Date().addingTimeInterval(3)
+    let deadline = Date().addingTimeInterval(60)
     var served = ownerCredentialSucceeds(host)
     while !served && Date() < deadline {
       Thread.sleep(forTimeInterval: 0.05)
@@ -554,7 +555,6 @@ struct ParkedWaitDisconnectTests {
       token: token, operation: "wait", arguments: ["timeout": .integer(30)])
     try FrameCodec(maximumSize: host.frameMaximum).writeFrame(
       try WireCoding.encode(request), to: client)
-    Thread.sleep(forTimeInterval: 0.4)
     return client
   }
 
@@ -566,6 +566,7 @@ struct ParkedWaitDisconnectTests {
     let owner = try field("token", of: try ask(host, "owner.credential"))
     let waiter = try agent(on: host, owner: owner, name: "a")
     let parked = try park(host, token: waiter)
+    #expect(host.waitUntilParked(ownerToken: owner, count: 1), "the wait has parked")
     // The second place is taken by a connection that stays silent, so the next request can only
     // be served once the parked wait has let go of its place.
     let filler = try UnixSocketClient.connect(path: host.socketPath)
@@ -574,7 +575,7 @@ struct ParkedWaitDisconnectTests {
     let started = Date()
 
     var listed: WireResponse?
-    while listed?.isSuccess != true && Date().timeIntervalSince(started) < 3 {
+    while listed?.isSuccess != true && Date().timeIntervalSince(started) < 60 {
       listed = try? ask(host, "activity.list", token: owner)
       if listed?.isSuccess != true { Thread.sleep(forTimeInterval: 0.05) }
     }
@@ -596,11 +597,12 @@ struct ParkedWaitDisconnectTests {
     }
     let waiter = try agent(on: host, owner: owner, name: "a")
     let parked = try park(host, token: waiter)
+    #expect(host.waitUntilParked(ownerToken: owner, count: 1), "the wait has parked")
     parked.close()
     let started = Date()
 
     var outcome = "refused"
-    while outcome != "timeout" && Date().timeIntervalSince(started) < 3 {
+    while outcome != "timeout" && Date().timeIntervalSince(started) < 60 {
       let answer = try ask(host, "wait", token: waiter, ["timeout": .integer(1)])
       outcome = (try? field("outcome", of: answer)) ?? "refused"
       if outcome != "timeout" { Thread.sleep(forTimeInterval: 0.05) }

@@ -49,7 +49,7 @@ struct DescriptorHeadroomTests {
     defer { try? FileManager.default.removeItem(at: folder) }
     let reporter = SpyReporter()
     let host = try ServiceHost.start(
-      storeFolder: folder, requestTimeout: 5, reporter: reporter, descriptors: limits(fitting: 2))
+      storeFolder: folder, requestTimeout: 120, reporter: reporter, descriptors: limits(fitting: 2))
     defer { host.stop() }
     let first = try UnixSocketClient.connect(path: host.socketPath)
     let second = try UnixSocketClient.connect(path: host.socketPath)
@@ -60,9 +60,9 @@ struct DescriptorHeadroomTests {
     #expect(
       refused?.failure?.code == .tooManyConnections,
       "the third connection got the answer, not a closed socket: \(String(describing: refused))")
-    #expect(Date().timeIntervalSince(started) < 2, "it was refused at once, not at a timeout")
+    #expect(Date().timeIntervalSince(started) < 60, "it was refused at once, not at a timeout")
     first.close()
-    let deadline = Date().addingTimeInterval(3)
+    let deadline = Date().addingTimeInterval(60)
     var served = ownerCredential(host)?.isSuccess == true
     while !served && Date() < deadline {
       Thread.sleep(forTimeInterval: 0.05)

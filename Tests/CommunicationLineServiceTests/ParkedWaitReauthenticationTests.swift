@@ -67,7 +67,8 @@ struct ParkedWaitReauthenticationTests {
       answer.deliver(
         try? ask(setup.host, "wait", token: setup.token, ["timeout": .integer(30)]))
     }
-    Thread.sleep(forTimeInterval: 0.5)
+    #expect(
+      setup.host.waitUntilParked(ownerToken: setup.owner, count: 1), "the wait has parked")
     return answer
   }
 
@@ -82,8 +83,8 @@ struct ParkedWaitReauthenticationTests {
       setup.host, "principal.disable", token: setup.owner, ["principal": .string(setup.agentID)])
 
     #expect(
-      answer.finished.wait(timeout: .now() + 4) == .success,
-      "the wait ended within a few seconds, not at its 30 second timeout")
+      answer.finished.wait(timeout: .now() + 20) == .success,
+      "the wait ended before its own 30 second timeout")
     #expect(
       answer.response?.failure?.code == .principalDisabled,
       "and it ended with the authentication outcome, never with mail")
@@ -104,8 +105,8 @@ struct ParkedWaitReauthenticationTests {
       setup.host, "principal.enable", token: setup.owner, ["principal": .string(setup.agentID)])
 
     #expect(
-      answer.finished.wait(timeout: .now() + 4) == .success,
-      "the wait ended within a few seconds, not at its 30 second timeout")
+      answer.finished.wait(timeout: .now() + 20) == .success,
+      "the wait ended before its own 30 second timeout")
     #expect(
       answer.response?.failure?.code == .tokenRevoked,
       "the old credential was revoked, so the wait says so")

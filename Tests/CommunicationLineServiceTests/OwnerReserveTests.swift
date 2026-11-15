@@ -43,7 +43,6 @@ struct OwnerReserveTests {
       token: token, operation: "wait", arguments: ["timeout": .integer(30)])
     try FrameCodec(maximumSize: host.frameMaximum).writeFrame(
       try WireCoding.encode(request), to: client)
-    Thread.sleep(forTimeInterval: 0.4)
     return client
   }
 
@@ -61,6 +60,8 @@ struct OwnerReserveTests {
     // Every agent tries to park; only the unreserved slots can be taken.
     let parked = try [first, second, third, fourth].map { try park(host, token: $0.token) }
     defer { parked.forEach { $0.close() } }
+    #expect(
+      host.waitUntilParked(ownerToken: owner, count: 2), "the two unreserved slots hold a wait")
 
     let refused = try ask(host, "wait", token: first.token, ["timeout": .integer(1)])
     let health = try ask(host, "health", token: owner)

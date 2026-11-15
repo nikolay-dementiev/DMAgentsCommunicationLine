@@ -138,3 +138,30 @@ final class RawFile {
     return Int(sqlite3_column_int64(statement, 0))
   }
 }
+
+extension ServiceHost {
+  /// Waits until `count` principals have a wait parked, as `principal.list` shows it. The service
+  /// itself says when a wait has parked, so a test does not have to guess how long that takes. The
+  /// long limit only keeps a broken service from hanging the test.
+  func waitUntilParked(ownerToken: String, count: Int) -> Bool {
+    let deadline = Date().addingTimeInterval(60)
+    repeat {
+      let response = try? SocketExchange.call(
+        socketPath: socketPath,
+        request: WireRequest(token: ownerToken, operation: "principal.list"),
+        maximumFrame: frameMaximum)
+      if case .object(let fields)? = response?.result,
+        case .array(let principals)? = fields["principals"]
+      {
+        let parked = principals.filter { principal in
+          guard case .object(let entry) = principal, case .integer? = entry["listening_since_ms"]
+          else { return false }
+          return true
+        }
+        if parked.count >= count { return true }
+      }
+      Thread.sleep(forTimeInterval: 0.01)
+    } while Date() < deadline
+    return false
+  }
+}
