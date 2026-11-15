@@ -1,12 +1,6 @@
 import CommunicationLineDomain
 import Foundation
 
-/// A cleanup that ran but whose commit the caller has not seen yet.
-public struct CleanupAttempt: Sendable {
-  public let result: CleanupResult
-  fileprivate let report: CleanupReport
-}
-
 /// Runs cleanup for the service and remembers the last run, whether it came from the schedule or
 /// from the owner. The memory lasts as long as the process.
 public final class CleanupRunner: @unchecked Sendable {
@@ -27,23 +21,15 @@ public final class CleanupRunner: @unchecked Sendable {
     return report
   }
 
-  /// Runs cleanup once, in its own transaction. A failure is remembered and thrown again.
+  /// Runs cleanup once, in its own transaction, and remembers the run only after that transaction
+  /// has committed. A failure is remembered and thrown again.
   @discardableResult
   public func run() throws -> CleanupResult {
-    let finished = try attempt()
-    remember(finished)
-    return finished.result
-  }
-
-  /// Runs cleanup without remembering that it succeeded, for a caller whose own transaction is
-  /// still open: the deletions are only real once that transaction commits, and the caller then
-  /// passes the attempt to ``remember(_:)``. A failure is remembered at once and thrown again.
-  public func attempt() throws -> CleanupAttempt {
     let started = clock.now()
     do {
       let result = try service.run()
-      return CleanupAttempt(
-        result: result, report: CleanupReport(at: started, outcome: .success(result)))
+      store(CleanupReport(at: started, outcome: .success(result)))
+      return result
     } catch {
       store(
         CleanupReport(at: started, outcome: .failure(CleanupFailure(description: "\(error)"))))
@@ -51,8 +37,13 @@ public final class CleanupRunner: @unchecked Sendable {
     }
   }
 
-  public func remember(_ attempt: CleanupAttempt) {
-    store(attempt.report)
+  /// Marks the last run as one whose activity record is missing. The run itself stays as it was:
+  /// its deletions are committed.
+  public func noteRecordFailure() {
+    lock.lock()
+    defer { lock.unlock() }
+    guard let last = report else { return }
+    report = CleanupReport(at: last.at, outcome: last.outcome, isRecorded: false)
   }
 
   private func store(_ new: CleanupReport) {

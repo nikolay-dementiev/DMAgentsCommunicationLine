@@ -62,7 +62,10 @@ public struct RequestDispatcher: @unchecked Sendable {
   /// Every request leaves one activity record. For an ordinary request the record is written in
   /// the transaction of its effect, so neither exists without the other; a refused or failed request
   /// rolls back and is recorded afterwards. A `wait` parks, so it never holds a transaction: it is
-  /// recorded when it ends.
+  /// recorded when it ends. The owner's cleanup commits its deletions in a transaction of its own
+  /// and is recorded afterwards, for the same reason as a wait: its work is real whether or not the
+  /// record can be written. When such a record cannot be written the failure is reported and the
+  /// request still succeeds.
   public func handle(_ request: WireRequest, cancellation: WaitCancellation? = nil)
     -> WireResponse
   {
@@ -74,31 +77,37 @@ public struct RequestDispatcher: @unchecked Sendable {
         throw RequestError.badRequest("unknown operation \(request.operation)")
       }
       let result: WireValue
-      let afterCommit = AfterCommit()
-      if operation == .wait {
+      if operation == .wait || operation == .healthCleanup {
         let actor = try actor(of: request)
         result = try perform(
-          operation, request: request, arguments: arguments, afterCommit: afterCommit,
-          cancellation: cancellation)
-        try activity.record(actor: actor, operation: name, outcome: "ok", targets: [])
+          operation, request: request, arguments: arguments, cancellation: cancellation)
+        recordOutcomeOfFinishedWork(actor: actor, operation: operation)
       } else {
         result = try transactions.atomically {
           let actor = try actor(of: request)
-          let value = try perform(
-            operation, request: request, arguments: arguments, afterCommit: afterCommit)
+          let value = try perform(operation, request: request, arguments: arguments)
           try activity.record(
             actor: actor, operation: name, outcome: "ok",
             targets: activityTargets(operation, arguments: arguments, result: value))
           return value
         }
       }
-      afterCommit.run()
       return .success(result)
     } catch {
       let response = ErrorMapping.response(
         for: error, operation: request.operation, reporter: reporter)
       recordFailure(of: request, as: name, response: response)
       return response
+    }
+  }
+
+  /// Records a request whose work has already happened and cannot be undone by a failed record.
+  private func recordOutcomeOfFinishedWork(actor: ActivityActor, operation: Operation) {
+    do {
+      try activity.record(actor: actor, operation: operation.rawValue, outcome: "ok", targets: [])
+    } catch {
+      reporter.report(error, operation: "record activity")
+      if operation == .healthCleanup { cleanup.noteRecordFailure() }
     }
   }
 
@@ -130,7 +139,7 @@ public struct RequestDispatcher: @unchecked Sendable {
   }
 
   private func perform(
-    _ operation: Operation, request: WireRequest, arguments: Arguments, afterCommit: AfterCommit,
+    _ operation: Operation, request: WireRequest, arguments: Arguments,
     cancellation: WaitCancellation? = nil
   ) throws -> WireValue {
     switch operation {
@@ -146,7 +155,7 @@ public struct RequestDispatcher: @unchecked Sendable {
         try health.report(
           ownerToken: try token(of: request), family: try arguments.optionalString("family")))
     case .healthCleanup:
-      return try performCleanup(token: try token(of: request), afterCommit: afterCommit)
+      return try performCleanup(token: try token(of: request))
     default:
       return try performOwner(operation, token: try token(of: request), arguments: arguments)
     }
@@ -162,18 +171,5 @@ public struct RequestDispatcher: @unchecked Sendable {
     guard let text = request.token, !text.isEmpty else { return nil }
     guard let token = CredentialToken(encoded: text) else { throw IdentityError.unknownToken }
     return token
-  }
-}
-
-/// Work that must happen only once the transaction of a request has committed.
-final class AfterCommit {
-  private var actions: [() -> Void] = []
-
-  func add(_ action: @escaping () -> Void) { actions.append(action) }
-
-  func run() {
-    let pending = actions
-    actions = []
-    pending.forEach { $0() }
   }
 }

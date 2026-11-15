@@ -70,6 +70,8 @@ public enum HealthWarning: String, Equatable, Sendable {
   case storageBudget = "storage_budget"
   /// The database passed `storage.refusal_percent` of `storage.budget`, so `send` is refused.
   case storageFull = "storage_full"
+  /// The last cleanup deleted what it should, but the record of that run could not be written.
+  case cleanupNotRecorded = "cleanup_not_recorded"
 }
 
 public struct HealthReport: Equatable, Sendable {
@@ -138,6 +140,7 @@ public struct HealthService {
     let overdue = try overdueDeliveries(of: recipients, now: now, page: page)
     let status = try storage.status()
     let listeners = listening.listeningPrincipals()
+    let lastCleanup = cleanup.latest
     return HealthReport(
       startedAt: startedAt,
       pending: recipients.map { PendingCount(principal: $0.principal, count: $0.count) },
@@ -149,8 +152,9 @@ public struct HealthService {
           age: Int(now.timeIntervalSince(entry.createdAt)))
       }, storage: status,
       warnings: (status.isWarning ? [.storageBudget] : [])
-        + (status.isRefusing ? [.storageFull] : []),
-      lastCleanup: cleanup.latest)
+        + (status.isRefusing ? [.storageFull] : [])
+        + (lastCleanup?.isRecorded == false ? [.cleanupNotRecorded] : []),
+      lastCleanup: lastCleanup)
   }
 
   /// A delivery is overdue when its age in whole seconds is more than the threshold of its

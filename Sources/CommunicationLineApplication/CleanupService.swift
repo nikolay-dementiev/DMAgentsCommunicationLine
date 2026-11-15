@@ -32,10 +32,13 @@ public struct CleanupReport: Equatable, Sendable {
   public let at: Date
   /// The deletions, or the reason the run failed.
   public let outcome: Result<CleanupResult, CleanupFailure>
+  /// False when the run committed its deletions but its own activity record could not be written.
+  public let isRecorded: Bool
 
-  public init(at: Date, outcome: Result<CleanupResult, CleanupFailure>) {
+  public init(at: Date, outcome: Result<CleanupResult, CleanupFailure>, isRecorded: Bool = true) {
     self.at = at
     self.outcome = outcome
+    self.isRecorded = isRecorded
   }
 }
 
