@@ -1,6 +1,8 @@
 /// The numbered schema steps of the product. Released versions never change; add a new step instead.
 public enum SchemaMigrations {
-  public static let all: [Migration] = [version1, version2, version3, version4, version5, version6]
+  public static let all: [Migration] = [
+    version1, version2, version3, version4, version5, version6, version7,
+  ]
 
   /// Version 1: stored settings and their append-only audit trail.
   private static let version1 = Migration(
@@ -246,6 +248,40 @@ public enum SchemaMigrations {
       CREATE TRIGGER settings_audit_id_is_never_minus_one AFTER INSERT ON settings_audit
       WHEN NEW.id = -1
       BEGIN SELECT RAISE(ABORT, 'an audit record cannot have the id -1'); END
+      """,
+    ])
+
+  /// Version 7: a kept count of the pending deliveries of each recipient, so the inbox quota is one
+  /// primary-key read inside the send transaction and not a walk over the recipient's pending rows.
+  /// Triggers keep it in step with `deliveries`; a pending delivery can only be added or
+  /// acknowledged (version 3), so those two are the only changes to follow.
+  private static let version7 = Migration(
+    version: 7,
+    statements: [
+      """
+      CREATE TABLE pending_counts (
+        recipient TEXT PRIMARY KEY CHECK (recipient <> ''),
+        count INTEGER NOT NULL CHECK (count >= 0)
+      ) WITHOUT ROWID
+      """,
+      """
+      INSERT INTO pending_counts (recipient, count)
+      SELECT recipient, COUNT(*) FROM deliveries WHERE state = 'pending' GROUP BY recipient
+      """,
+      """
+      CREATE TRIGGER deliveries_count_a_new_pending AFTER INSERT ON deliveries
+      WHEN NEW.state = 'pending'
+      BEGIN
+        INSERT INTO pending_counts (recipient, count) VALUES (NEW.recipient, 1)
+        ON CONFLICT (recipient) DO UPDATE SET count = count + 1;
+      END
+      """,
+      """
+      CREATE TRIGGER deliveries_count_an_acknowledged AFTER UPDATE ON deliveries
+      WHEN OLD.state = 'pending' AND NEW.state = 'acknowledged'
+      BEGIN
+        UPDATE pending_counts SET count = count - 1 WHERE recipient = OLD.recipient;
+      END
       """,
     ])
 }

@@ -31,7 +31,7 @@ import Testing
   @Test func test_schema_versionFourCreatesTheActivityTable() throws {
     let fixture = try Fixture()
 
-    #expect(SchemaMigrations.all.map(\.version) == [1, 2, 3, 4, 5, 6], "six numbered steps")
+    #expect(SchemaMigrations.all.map(\.version) == [1, 2, 3, 4, 5, 6, 7], "seven numbered steps")
     #expect(try fixture.identity.raw().tableExists("activity"), "the activity table exists")
   }
 

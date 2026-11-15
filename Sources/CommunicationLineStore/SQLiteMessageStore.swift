@@ -53,13 +53,15 @@ public final class SQLiteMessageStore: MessageStore {
     }
   }
 
+  /// The kept count of the recipient's pending deliveries: one primary-key read, taken inside the
+  /// send transaction, so it cannot change before the same transaction inserts.
   private func pendingCount(for recipient: PrincipalID) throws -> Int {
-    guard
-      case .integer(let count)? = try store.database.rows(
-        "SELECT COUNT(*) FROM deliveries WHERE recipient = ?1 AND state = 'pending'",
-        [.text(recipient.rawValue)]
-      ).first?.first, let size = Int(exactly: count)
-    else { throw StoreError.invalidStoredIdentity("pending count of \(recipient.rawValue)") }
+    let rows = try store.database.rows(
+      "SELECT count FROM pending_counts WHERE recipient = ?1", [.text(recipient.rawValue)])
+    guard let row = rows.first else { return 0 }
+    guard case .integer(let count)? = row.first, let size = Int(exactly: count) else {
+      throw StoreError.invalidStoredIdentity("pending count of \(recipient.rawValue)")
+    }
     return size
   }
 
