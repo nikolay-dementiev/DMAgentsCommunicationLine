@@ -242,12 +242,21 @@ struct SocketReadinessTests {
     let home = try TemporaryHome()
     let socket = home.url.appendingPathComponent("late.sock")
     let responder = ResponderBox()
-    DispatchQueue.global().asyncAfter(deadline: .now() + 0.2) {
-      responder.store(try? ScriptedResponder(path: socket.path) { _ in .answer })
-    }
+    let attempts = AttemptCounter()
     defer { responder.stop() }
+    // The listener appears only once the third attempt has found nothing there: the test depends
+    // on what the readiness check has seen, not on how fast a timer or a thread runs. The long
+    // limit only keeps a broken check from hanging the test.
+    let readiness = SocketReadiness(interval: 0.01) { path in
+      if attempts.next() == 3 {
+        responder.store(try? ScriptedResponder(path: socket.path) { _ in .answer })
+      }
+      return SocketServiceConnection(socketPath: path)
+    }
 
-    try SocketReadiness(interval: 0.01).waitUntilAnswering(socket: socket, within: 3)
+    try readiness.waitUntilAnswering(socket: socket, within: 120)
+
+    #expect(attempts.count >= 3, "the check kept trying while the socket was missing")
   }
 
   @Test func test_anOwnerRequestThatNeverGetsAnAnswer_failsAtTheSharedDeadline() throws {
@@ -295,6 +304,15 @@ private final class ResponderBox: @unchecked Sendable {
   func store(_ value: ScriptedResponder?) { lock.withLock { responder = value } }
 
   func stop() { lock.withLock { responder }?.stop() }
+}
+
+private final class AttemptCounter: @unchecked Sendable {
+  private let lock = NSLock()
+  private var attempts = 0
+
+  var count: Int { lock.withLock { attempts } }
+
+  func next() -> Int { lock.withLock { attempts += 1; return attempts } }
 }
 
 private final class ResultBox: @unchecked Sendable {

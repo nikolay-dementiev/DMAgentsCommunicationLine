@@ -397,6 +397,33 @@ struct ScheduledCleanupTests {
   }
 }
 
+/// Sends one byte every few milliseconds on a stream until stopped: every single read of the
+/// service stays inside its per-read timeout.
+private final class Trickle: @unchecked Sendable {
+  private let lock = NSLock()
+  private var stopped = false
+  private var written = 0
+  private let finished = DispatchSemaphore(value: 0)
+
+  var bytesWritten: Int { lock.withLock { written } }
+
+  init(_ stream: FileDescriptorStream) {
+    Thread.detachNewThread { [self] in
+      while !lock.withLock({ stopped }) {
+        do { try stream.write(Data([0x20])) } catch { break }
+        lock.withLock { written += 1 }
+        Thread.sleep(forTimeInterval: 0.02)
+      }
+      finished.signal()
+    }
+  }
+
+  func stop() {
+    lock.withLock { stopped = true }
+    finished.wait()
+  }
+}
+
 struct ConnectionLimitTests {
   private func ownerCredentialSucceeds(_ host: ServiceHost) -> Bool {
     (try? SocketExchange.call(
@@ -434,21 +461,27 @@ struct ConnectionLimitTests {
   @Test func test_aTricklingClient_isClosedAtTheRequestDeadline() throws {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
-    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 5, requestDeadline: 0.4)
+    // The per-read timeout is far longer than anything this test waits for, so only the request
+    // deadline can close the connection. The test waits for the close itself, not for a moment on
+    // the clock; the client's own deadline only keeps a broken service from hanging the test.
+    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 120, requestDeadline: 0.4)
     defer { host.stop() }
-    let stream = try UnixSocketClient.connect(path: host.socketPath)
+    let stream = try UnixSocketClient.connect(
+      path: host.socketPath, deadline: Date().addingTimeInterval(60))
     try stream.write(Data([0, 0, 3, 0xE8]))
-    let started = Date()
-    var closed = false
+    let trickling = Trickle(stream)
+    defer { trickling.stop() }
 
-    // One byte every tenth of a second keeps every single read inside the per-read timeout.
-    for _ in 0..<40 where !closed {
-      Thread.sleep(forTimeInterval: 0.1)
-      do { try stream.write(Data([0x20])) } catch { closed = true }
+    // The service closes its side; what the client sees is the end of the stream or a reset.
+    var closed = false
+    do {
+      closed = try stream.read(upTo: 1).isEmpty
+    } catch let error as UnixSocketError {
+      closed = error != .system(operation: "read", code: ETIMEDOUT)
     }
 
     #expect(closed, "the service closed the connection that never finished its request")
-    #expect(Date().timeIntervalSince(started) < 3, "it did so near the deadline")
+    #expect(trickling.bytesWritten > 0, "the client was still sending when it was cut off")
   }
 
   @Test func test_aRequestThatArrivesInTime_isAnswered_evenWhenItsAnswerComesAfterTheDeadline()
