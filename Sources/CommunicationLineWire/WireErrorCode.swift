@@ -19,6 +19,7 @@ public enum WireErrorCode: String, Sendable, Codable, CaseIterable {
   case ownerRequired = "owner_required"
   case agentRequired = "agent_required"
   case unknownPrincipal = "unknown_principal"
+  case unknownFamily = "unknown_family"
   case unknownRecipient = "unknown_recipient"
   case recipientRefused = "recipient_refused"
   case messageUnavailable = "message_unavailable"
@@ -46,7 +47,8 @@ public enum WireErrorCode: String, Sendable, Codable, CaseIterable {
     case .badRequest, .frameTooLarge, .recipientInboxFull, .tooManyWaiters: return .request
     case .tokenRequired, .unknownToken, .tokenRevoked, .principalDisabled: return .authentication
     case .ownerRequired, .agentRequired, .recipientRefused: return .permission
-    case .unknownPrincipal, .unknownRecipient, .messageUnavailable, .unknownGrant, .unknownKey:
+    case .unknownPrincipal, .unknownFamily, .unknownRecipient, .messageUnavailable, .unknownGrant,
+      .unknownKey:
       return .notFound
     case .invalidName, .invalidRule, .invalidPageLimit, .invalidSetting, .noRecipients,
       .tooManyRecipients, .subjectTooLarge, .bodyTooLarge, .expiryInThePast, .scopeNotAllowed,

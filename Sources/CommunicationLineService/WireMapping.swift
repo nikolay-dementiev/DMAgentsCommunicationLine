@@ -17,6 +17,16 @@ enum WireMapping {
     ])
   }
 
+  static func listing(_ listing: PrincipalListing) -> WireValue {
+    let principal = listing.principal
+    return .object([
+      "id": .string(principal.id.rawValue), "family": .string(principal.family),
+      "role": .string(principal.role.rawValue), "name": .string(principal.displayName),
+      "enabled": .bool(principal.isEnabled), "pending": .integer(Int64(listing.pending)),
+      "listening_since_ms": listing.listeningSince.map(milliseconds) ?? .null,
+    ])
+  }
+
   static func inboxPage(_ page: InboxPage) -> WireValue {
     .object([
       "entries": .array(

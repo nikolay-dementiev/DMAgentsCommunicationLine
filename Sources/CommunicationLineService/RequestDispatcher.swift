@@ -10,6 +10,7 @@ enum Operation: String {
   case principalCreate = "principal.create"
   case principalDisable = "principal.disable"
   case principalEnable = "principal.enable"
+  case principalList = "principal.list"
   case credentialIssue = "credential.issue"
   case grantAdd = "grant.add"
   case grantRevoke = "grant.revoke"
@@ -36,14 +37,17 @@ public struct RequestDispatcher: @unchecked Sendable {
   let activity: ActivityService
   let cleanup: CleanupRunner
   let health: HealthService
+  let directory: DirectoryService
   private let transactions: any TransactionRunner
   private let reporter: any FailureReporter
 
   init(
     identity: IdentityService, rights: RightsService, settings: SettingsService,
     messages: MessageService, activity: ActivityService, cleanup: CleanupRunner,
-    health: HealthService, transactions: any TransactionRunner, reporter: any FailureReporter
+    health: HealthService, directory: DirectoryService, transactions: any TransactionRunner,
+    reporter: any FailureReporter
   ) {
+    self.directory = directory
     self.identity = identity
     self.rights = rights
     self.settings = settings

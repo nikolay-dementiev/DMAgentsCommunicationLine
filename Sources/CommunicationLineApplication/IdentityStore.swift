@@ -9,6 +9,8 @@ public enum IdentityError: Error, Equatable {
   case ownerCredentialRequired
   case principalCredentialRequired
   case unknownPrincipal(PrincipalID)
+  /// An owner asked about a family that has no principal.
+  case unknownFamily(String)
   case invalidName(field: String)
   case invalidRandomOutput
 }

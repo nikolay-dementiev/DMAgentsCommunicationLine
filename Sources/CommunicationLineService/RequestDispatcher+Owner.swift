@@ -29,6 +29,10 @@ extension RequestDispatcher {
       try identity.enablePrincipal(
         PrincipalID(try arguments.string("principal")), ownerToken: token)
       return .object([:])
+    case .principalList:
+      let listed = try directory.principals(
+        family: try arguments.optionalString("family"), ownerToken: token)
+      return .object(["principals": .array(listed.map(WireMapping.listing))])
     case .credentialIssue:
       let issued = try identity.issueCredential(
         for: PrincipalID(try arguments.string("principal")), ownerToken: token)

@@ -80,7 +80,7 @@ struct WireMessageTests {
       names == [
         "bad_request", "frame_too_large", "token_required", "unknown_token", "token_revoked",
         "principal_disabled", "owner_required", "agent_required", "unknown_principal",
-        "unknown_recipient", "recipient_refused", "message_unavailable", "unknown_grant",
+        "unknown_family", "unknown_recipient", "recipient_refused", "message_unavailable", "unknown_grant",
         "unknown_key", "invalid_name", "invalid_rule", "invalid_page_limit", "invalid_setting",
         "no_recipients", "too_many_recipients", "recipient_inbox_full", "too_many_waiters",
         "subject_too_large", "body_too_large", "expiry_in_the_past",

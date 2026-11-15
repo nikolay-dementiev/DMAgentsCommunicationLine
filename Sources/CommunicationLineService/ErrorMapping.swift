@@ -49,6 +49,7 @@ public enum ErrorMapping {
     case .ownerCredentialRequired: return (.ownerRequired, "the owner token is required")
     case .principalCredentialRequired: return (.agentRequired, "a principal token is required")
     case .unknownPrincipal(let id): return (.unknownPrincipal, "no principal \(id.rawValue)")
+    case .unknownFamily(let family): return (.unknownFamily, "no principal in family \(family)")
     case .invalidName(let field): return (.invalidName, "\(field) must not be blank")
     case .invalidRandomOutput: return nil
     }
