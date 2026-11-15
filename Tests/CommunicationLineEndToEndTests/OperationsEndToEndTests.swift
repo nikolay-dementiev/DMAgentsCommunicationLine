@@ -28,7 +28,9 @@ struct OperationsEndToEndTests {
     try world.require(world.run(["acknowledge", sent], token: bob.token), "acknowledge")
     let acknowledged = try world.require(world.asOwner(["health"]), "health").out
     #expect(acknowledged.contains("overdue: 0"), "an acknowledged delivery is not overdue")
-    #expect(!acknowledged.contains("pending:"), "and nobody has anything pending")
+    #expect(!acknowledged.contains("pending: \(bob.id)"), "and nobody has anything pending")
+    #expect(
+      acknowledged.contains("not listening with pending: 0\n"), "so nobody is deaf to mail either")
 
     clock.advance(seconds: 91 * day)
     let cleanup = try world.require(world.asOwner(["health", "cleanup"]), "cleanup").out
