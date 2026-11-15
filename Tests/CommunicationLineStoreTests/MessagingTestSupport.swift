@@ -30,6 +30,9 @@ final class RecordingArrival: MailArrival {
 final class HookedMessageStore: MessageStore {
   let base: any MessageStore
   var beforeSend: (() throws -> Void)?
+  /// Runs inside the send transaction, after the send checks passed and before the rows are
+  /// written: the moment at which the pending counts of the recipients have been read.
+  var afterAuthorize: (() -> Void)?
 
   init(base: any MessageStore) { self.base = base }
 
@@ -38,7 +41,10 @@ final class HookedMessageStore: MessageStore {
       beforeSend = nil
       try hook()
     }
-    try base.send(message, authorize: authorize)
+    try base.send(message) { context in
+      try authorize(context)
+      afterAuthorize?()
+    }
   }
 
   func message(id: MessageID) throws -> StoredMessage? { try base.message(id: id) }
