@@ -78,6 +78,12 @@ final class TestClock: WallClock, @unchecked Sendable {
     return instant
   }
 
+  func advance(seconds: Double) {
+    lock.lock()
+    instant = instant.addingTimeInterval(seconds)
+    lock.unlock()
+  }
+
   func advance(days: Double) {
     lock.lock()
     instant = instant.addingTimeInterval(days * 86_400)
