@@ -11,7 +11,7 @@ public protocol ListeningRegistry: Sendable {
 }
 
 /// A place taken by one parked wait; it is given back when that wait ends.
-struct WaitPlace: Equatable {
+struct WaitPlace {
   fileprivate let number: UInt64
 }
 
