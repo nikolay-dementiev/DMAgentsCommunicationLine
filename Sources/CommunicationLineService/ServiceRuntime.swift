@@ -71,11 +71,12 @@ public final class ServiceRuntime {
       catalog: catalog, store: settingsStore, clock: clock, authenticator: identity)
     let arrival = InProcessMailArrival()
     let waitQuota = WaitQuota()
+    let storage = StorageService(store: SQLiteStorageStore(store: store), settings: settings)
     let messages = MessageService(
       store: SQLiteMessageStore(store: store), rights: SQLiteRightsStore(store: store),
       authenticator: identity, settings: settings, identifiers: UUIDIdentifierSource(),
       clock: clock, arrival: arrival,
-      waitLimiter: waitQuota)
+      waitLimiter: waitQuota, storage: storage)
     try applyStoredBusyTimeout(catalog: catalog, settings: settingsStore, to: store)
     let frameMaximum = try frameMaximum(catalog: catalog, store: settingsStore)
     let activity = ActivityService(
@@ -89,7 +90,7 @@ public final class ServiceRuntime {
       clock: clock)
     let health = HealthService(
       store: SQLiteHealthStore(store: store), settings: settings,
-      storage: StorageService(store: SQLiteStorageStore(store: store), settings: settings),
+      storage: storage,
       cleanup: cleanup, identity: identity, listening: waitQuota, clock: clock,
       startedAt: clock.now())
     let directory = DirectoryService(

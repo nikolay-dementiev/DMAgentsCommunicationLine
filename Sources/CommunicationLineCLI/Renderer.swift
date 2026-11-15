@@ -99,7 +99,8 @@ enum Renderer {
     if case .object(let storage)? = fields["storage"] {
       lines.append(
         "storage: \(scalar(storage["used_bytes"])) of \(scalar(storage["budget_bytes"])) bytes, "
-          + "warning at \(scalar(storage["warning_percent"]))%")
+          + "warning at \(scalar(storage["warning_percent"]))%, "
+          + "refusing sends at \(scalar(storage["refusal_percent"]))%")
     }
     if case .array(let warnings)? = fields["warnings"] {
       lines += warnings.map { "warning: \(string($0))" }

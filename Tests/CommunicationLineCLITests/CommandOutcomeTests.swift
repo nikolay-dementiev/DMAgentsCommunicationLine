@@ -312,7 +312,7 @@ struct CommandOutcomeTests {
       ]),
       "storage": .object([
         "used_bytes": .integer(4096), "budget_bytes": .integer(5000),
-        "warning_percent": .integer(80),
+        "warning_percent": .integer(80), "refusal_percent": .integer(95),
       ]),
       "warnings": .array([.string("storage_budget")]),
       "last_cleanup": .object([
@@ -328,7 +328,7 @@ struct CommandOutcomeTests {
       outcome.harness.standardOutput
         == """
         started: 1800000000000
-        storage: 4096 of 5000 bytes, warning at 80%
+        storage: 4096 of 5000 bytes, warning at 80%, refusing sends at 95%
         warning: storage_budget
         pending: p2\t3
         not listening with pending: 1

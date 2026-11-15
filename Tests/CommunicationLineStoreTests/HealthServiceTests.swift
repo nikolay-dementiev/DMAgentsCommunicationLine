@@ -197,7 +197,9 @@ import Testing
     try fixture.set("storage.budget", to: 1)
     let report = try fixture.report()
 
-    #expect(report.warnings == [.storageBudget], "the warning is named")
+    #expect(
+      report.warnings == [.storageBudget, .storageFull],
+      "the warning is named, and so is the refusal that comes with a budget this small")
     #expect(report.storage.budgetBytes == 1, "the budget the use is measured against")
     #expect(report.storage.usedBytes > 0, "the use")
   }

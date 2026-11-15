@@ -125,6 +125,7 @@ enum WireMapping {
         "used_bytes": .integer(report.storage.usedBytes),
         "budget_bytes": .integer(report.storage.budgetBytes),
         "warning_percent": .integer(Int64(report.storage.warningPercent)),
+        "refusal_percent": .integer(Int64(report.storage.refusalPercent)),
       ]),
       "warnings": .array(report.warnings.map { .string($0.rawValue) }),
       "last_cleanup": report.lastCleanup.map(cleanup) ?? .null,

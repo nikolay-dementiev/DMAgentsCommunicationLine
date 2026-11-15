@@ -12,13 +12,15 @@ public struct MessageService {
   private let clock: any WallClock
   private let arrival: any MailArrival
   private let waitLimiter: any WaitLimiting
+  private let storage: any StorageGating
 
   public init(
     store: any MessageStore, rights: any RightsStore, authenticator: any Authenticating,
     settings: any SettingsReading,
     identifiers: any IdentifierSource, clock: any WallClock, arrival: any MailArrival,
-    waitLimiter: any WaitLimiting
+    waitLimiter: any WaitLimiting, storage: any StorageGating
   ) {
+    self.storage = storage
     self.store = store
     self.rights = rights
     self.authenticator = authenticator
@@ -38,6 +40,7 @@ public struct MessageService {
     token: CredentialToken, to recipients: [PrincipalID], subject: String, body: String
   ) throws -> MessageID {
     let sender = try requirePrincipal(token)
+    guard try !storage.refusesNewMail() else { throw MessagingError.storageFull }
     let distinct = Self.distinct(recipients)
     let limits = MessageLimits(
       maxSubjectBytes: try setting("messaging.subject_max", token: token),

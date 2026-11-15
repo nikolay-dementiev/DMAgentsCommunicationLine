@@ -147,7 +147,9 @@ public struct HealthService {
         OverdueDelivery(
           message: entry.message, recipient: entry.recipient,
           age: Int(now.timeIntervalSince(entry.createdAt)))
-      }, storage: status, warnings: status.isWarning ? [.storageBudget] : [],
+      }, storage: status,
+      warnings: (status.isWarning ? [.storageBudget] : [])
+        + (status.isRefusing ? [.storageFull] : []),
       lastCleanup: cleanup.latest)
   }
 

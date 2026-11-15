@@ -34,7 +34,9 @@ private final class SpyWaitLimiter: WaitLimiting, @unchecked Sendable {
       store: fixture.store, rights: SQLiteRightsStore(store: fixture.identity.store),
       authenticator: fixture.identity.service, settings: fixture.settings,
       identifiers: SequentialIdentifiers(), clock: fixture.clock, arrival: fixture.recorder,
-      waitLimiter: limiter)
+      waitLimiter: limiter,
+      storage: StorageService(
+        store: SQLiteStorageStore(store: fixture.identity.store), settings: fixture.settings))
     return (fixture, service)
   }
 

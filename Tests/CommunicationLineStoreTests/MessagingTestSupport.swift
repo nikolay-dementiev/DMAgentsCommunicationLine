@@ -106,7 +106,8 @@ struct MessagingFixture {
       store: store, rights: SQLiteRightsStore(store: identity.store), authenticator: service,
       settings: settings,
       identifiers: SequentialIdentifiers(), clock: clock, arrival: arrival ?? recorder,
-      waitLimiter: waitQuota)
+      waitLimiter: waitQuota,
+      storage: StorageService(store: SQLiteStorageStore(store: identity.store), settings: settings))
   }
 
   func count(_ table: String) throws -> Int {
