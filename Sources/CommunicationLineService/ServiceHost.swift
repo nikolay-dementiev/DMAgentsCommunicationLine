@@ -53,8 +53,18 @@ public final class ServiceHost: @unchecked Sendable {
   private var refusedConnections: Set<Int32> = []
   /// Owner requests being served on such connections.
   private var reserveInUse = 0
-  /// How many connections past the limit are held at a time; the budget of descriptors allows it.
+  /// Connections past the agent share that have not yet sent a complete request, by descriptor,
+  /// with the identity of the connection; the smaller the identity, the older.
+  private var unclassified: [Int32: UInt64] = [:]
+  /// How many connections past the limit may wait to be classified at a time. When they are all
+  /// taken, the oldest is closed to make room, so a process that keeps connecting and sending
+  /// nothing cannot keep a newcomer, the owner among them, out.
   private static let refusalSlack = 16
+  /// How many connections past the limit are held in all, those being classified and those being
+  /// answered; the budget of descriptors allows it.
+  private static let refusalCap = 2 * refusalSlack
+  /// How long a connection past the limit may take to send a complete request.
+  private static let classificationDeadline: TimeInterval = 2
 
   private init(
     runtime: ServiceRuntime, lock: InstanceLock, listener: Int32, socketPath: String,
@@ -242,18 +252,23 @@ public final class ServiceHost: @unchecked Sendable {
       // A connection past the limit is kept only long enough to read its request and answer it
       // with too_many_connections, and only a few of them at a time; further ones are closed.
       let isRefused = activeConnections.count - refusedConnections.count >= agentShare
-      guard !isRefused || refusedConnections.count < Self.refusalSlack else {
+      if isRefused && unclassified.count >= Self.refusalSlack { closeOldestUnclassified() }
+      guard !isRefused || refusedConnections.count < Self.refusalCap else {
         state.unlock()
         close(connection)
         continue
       }
       activeConnections.insert(connection)
-      if isRefused { refusedConnections.insert(connection) }
       connectionCounter += 1
       let identity = connectionCounter
+      if isRefused {
+        refusedConnections.insert(connection)
+        unclassified[connection] = identity
+      }
       awaitingRequest[connection] = identity
       state.unlock()
-      DispatchQueue.global().asyncAfter(deadline: .now() + requestDeadline) {
+      let deadline = isRefused ? min(requestDeadline, Self.classificationDeadline) : requestDeadline
+      DispatchQueue.global().asyncAfter(deadline: .now() + deadline) {
         self.expireRequest(of: connection, identity: identity)
       }
       Thread.detachNewThread { self.serve(connection) }
@@ -264,6 +279,14 @@ public final class ServiceHost: @unchecked Sendable {
 
   /// Runs cleanup every `cleanupInterval` until the host stops. A failed run is reported and the
   /// next one is still attempted.
+  /// Closes the connection past the limit that has been waiting longest to send its request.
+  /// Called under the state lock, like every other touch of the connection sets.
+  private func closeOldestUnclassified() {
+    guard let oldest = unclassified.min(by: { $0.value < $1.value }) else { return }
+    unclassified[oldest.key] = nil
+    shutdown(oldest.key, SHUT_RDWR)
+  }
+
   private func cleanupLoop() {
     state.lock()
     while !isStopped {
@@ -293,6 +316,7 @@ public final class ServiceHost: @unchecked Sendable {
       state.lock()
       activeConnections.remove(descriptor)
       refusedConnections.remove(descriptor)
+      unclassified[descriptor] = nil
       awaitingRequest[descriptor] = nil
       state.broadcast()
       state.unlock()
@@ -347,6 +371,7 @@ public final class ServiceHost: @unchecked Sendable {
   private func requestFinished(_ descriptor: Int32) {
     state.lock()
     awaitingRequest[descriptor] = nil
+    unclassified[descriptor] = nil
     state.unlock()
   }
 
