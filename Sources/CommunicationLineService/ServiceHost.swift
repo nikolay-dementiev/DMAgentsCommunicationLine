@@ -67,19 +67,22 @@ public final class ServiceHost: @unchecked Sendable {
   private static let refusalCap = 2 * refusalSlack
   /// The longest the accept loop waits for a connection it closed to make room to be gone.
   private static let roomWait: TimeInterval = 0.25
-  /// How long a connection past the limit may take to send a complete request.
-  private static let classificationDeadline: TimeInterval = 2
+  /// How long a connection past the limit may take to send a complete request, unless the caller
+  /// of `start` says otherwise.
+  public static let defaultClassificationDeadline: TimeInterval = 2
+  private let classificationDeadline: TimeInterval
 
   private init(
     runtime: ServiceRuntime, lock: InstanceLock, listener: Int32, socketPath: String,
     peerReader: any PeerCredentialReader, requestTimeout: TimeInterval,
     reporter: any FailureReporter, cleanupInterval: TimeInterval, connectionLimit: Int,
-    ownerReserve: Int, requestDeadline: TimeInterval
+    ownerReserve: Int, requestDeadline: TimeInterval, classificationDeadline: TimeInterval
   ) {
     self.cleanupInterval = cleanupInterval
     self.connectionLimit = connectionLimit
     self.ownerReserve = min(max(ownerReserve, 0), max(connectionLimit - 1, 0))
     self.requestDeadline = requestDeadline
+    self.classificationDeadline = classificationDeadline
     self.runtime = runtime
     self.lock = lock
     self.listener = listener
@@ -97,6 +100,7 @@ public final class ServiceHost: @unchecked Sendable {
     userID: UInt32 = UInt32(geteuid()), clock: (any WallClock)? = nil,
     cleanupInterval: TimeInterval? = nil, connectionLimit: Int? = nil, ownerReserve: Int? = nil,
     requestDeadline: TimeInterval? = nil,
+    classificationDeadline: TimeInterval = ServiceHost.defaultClassificationDeadline,
     descriptors: any DescriptorLimits = SystemDescriptorLimits()
   ) throws -> ServiceHost {
     try StoreFolder.prepare(storeFolder, waitingUpTo: 5000)
@@ -115,7 +119,8 @@ public final class ServiceHost: @unchecked Sendable {
       cleanupInterval: cleanupInterval ?? runtime.cleanupInterval,
       connectionLimit: usableConnections,
       ownerReserve: ownerReserve ?? runtime.ownerReserve,
-      requestDeadline: requestDeadline ?? runtime.requestDeadline)
+      requestDeadline: requestDeadline ?? runtime.requestDeadline,
+      classificationDeadline: classificationDeadline)
     Thread.detachNewThread { host.acceptLoop() }
     Thread.detachNewThread { host.cleanupLoop() }
     return host
@@ -276,7 +281,7 @@ public final class ServiceHost: @unchecked Sendable {
       }
       awaitingRequest[connection] = identity
       state.unlock()
-      let deadline = isRefused ? min(requestDeadline, Self.classificationDeadline) : requestDeadline
+      let deadline = isRefused ? min(requestDeadline, classificationDeadline) : requestDeadline
       deadlines.schedule(after: deadline) {
         self.expireRequest(of: connection, identity: identity)
       }
