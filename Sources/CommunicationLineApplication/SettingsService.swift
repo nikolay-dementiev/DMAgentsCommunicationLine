@@ -41,6 +41,8 @@ public struct SettingsService {
   /// then the default. The owner sees global values and defaults.
   public func effectiveValue(of key: String, token: CredentialToken) throws -> SettingValue {
     let actor = try authenticator.authenticate(token)
+    // Settings are the owner's and the agents' to read; an observer reads health and nothing else.
+    if case .observer = actor { throw IdentityError.ownerCredentialRequired }
     let definition = try definition(for: key)
     var family: String?
     var principal: String?

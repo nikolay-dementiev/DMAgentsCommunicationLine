@@ -134,7 +134,8 @@ public struct HealthService {
   ///
   /// - Throws: ``IdentityError/unknownFamily(_:)`` when `family` has no principal.
   public func report(ownerToken: CredentialToken, family: String? = nil) throws -> HealthReport {
-    try identity.authenticateOwner(ownerToken)
+    // The observer's token is accepted too: a dashboard reads the report with it.
+    try identity.authenticateOwnerOrObserver(ownerToken)
     if let family, try !store.hasPrincipals(inFamily: family) {
       throw IdentityError.unknownFamily(family)
     }

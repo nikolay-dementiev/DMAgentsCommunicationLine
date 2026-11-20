@@ -12,6 +12,8 @@ enum Operation: String {
   case principalEnable = "principal.enable"
   case principalList = "principal.list"
   case credentialIssue = "credential.issue"
+  case observerIssue = "observer.issue"
+  case observerRevoke = "observer.revoke"
   case grantAdd = "grant.add"
   case grantRevoke = "grant.revoke"
   case grantList = "grant.list"

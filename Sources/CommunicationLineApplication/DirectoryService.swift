@@ -47,11 +47,13 @@ public struct DirectoryService {
     self.listening = listening
   }
 
+  /// `ownerToken` may also be the observer's: the list is what a dashboard reads.
+  ///
   /// - Throws: ``IdentityError/unknownFamily(_:)`` when `family` is given and has no principal.
   public func principals(family: String?, ownerToken: CredentialToken) throws
     -> [PrincipalListing]
   {
-    try identity.authenticateOwner(ownerToken)
+    try identity.authenticateOwnerOrObserver(ownerToken)
     let summaries = try store.principals(family: family)
     if let family, summaries.isEmpty { throw IdentityError.unknownFamily(family) }
     return summaries.map {

@@ -37,6 +37,13 @@ extension RequestDispatcher {
       let issued = try identity.issueCredential(
         for: PrincipalID(try arguments.string("principal")), ownerToken: token)
       return .object(["token": .string(issued.encoded)])
+    case .observerIssue:
+      return .object([
+        "token": .string(try identity.issueObserverCredential(ownerToken: token).encoded)
+      ])
+    case .observerRevoke:
+      try identity.revokeObserverCredential(ownerToken: token)
+      return .object([:])
     case .ruleAdd:
       try rights.allowSending(
         from: try arguments.string("from"), to: try arguments.string("to"), ownerToken: token)

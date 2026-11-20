@@ -107,7 +107,7 @@ struct ObserverAccessTests {
 
     let log = world.fixture.call("activity.list", token: world.owner)
 
-    guard case .object(let fields)? = log.result, case .array(let entries)? = fields["entries"]
+    guard case .object(let fields)? = log.result, case .array(let entries)? = fields["records"]
     else {
       Issue.record("the activity log has entries: \(String(describing: log.result))")
       return
