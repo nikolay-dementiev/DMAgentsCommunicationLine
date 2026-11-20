@@ -72,6 +72,40 @@ struct OwnerReserveTests {
     #expect(health.isSuccess, "the owner still gets in while agents hold every other slot")
   }
 
+  @Test func test_withFourPlacesAndAReserveOfTwo_exactlyTwoAgentWaitsPark() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(
+      storeFolder: folder, requestTimeout: 30, connectionLimit: 4, ownerReserve: 2)
+    defer { host.stop() }
+    let owner = try field("token", of: try ask(host, "owner.credential"))
+    let agents = try ["a", "b", "c", "d"].map { try agent(on: host, owner: owner, name: $0) }
+    let parked = try agents.prefix(2).map { try park(host, token: $0.token) }
+    defer { parked.forEach { $0.close() } }
+    #expect(host.waitUntilParked(ownerToken: owner, count: 2), "the two agent places hold a wait")
+
+    // The third and the fourth agent find no place: each is answered, none parks. The client
+    // deadline only keeps a service that parks them from hanging the test.
+    let codec = FrameCodec(maximumSize: host.frameMaximum)
+    var answers: [WireResponse?] = []
+    for extra in agents.suffix(2) {
+      let client = try UnixSocketClient.connect(
+        path: host.socketPath, deadline: Date().addingTimeInterval(5))
+      defer { client.close() }
+      let request = WireRequest(
+        token: extra.token, operation: "wait", arguments: ["timeout": .integer(30)])
+      try codec.writeFrame(try WireCoding.encode(request), to: client)
+      let frame = try? codec.readFrame(from: client)
+      answers.append(frame.flatMap { try? WireCoding.decodeResponse($0) })
+    }
+    let health = try ask(host, "health", token: owner)
+
+    #expect(
+      answers.map { $0?.failure?.code } == [.tooManyConnections, .tooManyConnections],
+      "the third and the fourth agent are each answered too_many_connections")
+    #expect(health.isSuccess, "the owner still gets in")
+  }
+
   @Test func test_idleConnectionsHoldingEveryOtherPlace_doNotKeepTheOwnerOut() throws {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
