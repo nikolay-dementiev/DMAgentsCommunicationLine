@@ -29,6 +29,9 @@ public struct IdentityService: Authenticating {
     case .owner:
       guard !credential.isRevoked else { throw IdentityError.tokenRevoked }
       return .owner
+    case .observer:
+      guard !credential.isRevoked else { throw IdentityError.tokenRevoked }
+      return .observer
     case .principal(let id):
       guard let principal = try store.principal(id: id) else { throw IdentityError.unknownToken }
       guard principal.isEnabled else { throw IdentityError.principalDisabled }
@@ -42,6 +45,31 @@ public struct IdentityService: Authenticating {
     guard case .owner = try authenticate(token) else {
       throw IdentityError.ownerCredentialRequired
     }
+  }
+
+  /// Accepts the owner's token or the observer's: what both may read. An agent's token is refused.
+  public func authenticateOwnerOrObserver(_ token: CredentialToken) throws {
+    switch try authenticate(token) {
+    case .owner, .observer: return
+    case .principal: throw IdentityError.ownerCredentialRequired
+    }
+  }
+
+  // MARK: - Observer credential
+
+  /// Issues the read-only credential and returns its token, the only time the token exists in the
+  /// product. A credential issued before stops working.
+  public func issueObserverCredential(ownerToken: CredentialToken) throws -> CredentialToken {
+    try authenticateOwner(ownerToken)
+    let token = try newToken()
+    try store.replaceObserverCredential(with: token.digest, at: clock.now())
+    return token
+  }
+
+  /// Revokes the read-only credential. With none issued nothing changes.
+  public func revokeObserverCredential(ownerToken: CredentialToken) throws {
+    try authenticateOwner(ownerToken)
+    try store.revokeObserverCredential(at: clock.now())
   }
 
   // MARK: - Owner credential

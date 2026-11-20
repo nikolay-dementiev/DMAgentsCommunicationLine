@@ -36,5 +36,7 @@ public struct Principal: Equatable, Sendable {
 /// Who a valid token belongs to.
 public enum AuthenticatedActor: Equatable, Sendable {
   case owner
+  /// The read-only credential of a program that watches the service. It is not a principal.
+  case observer
   case principal(Principal)
 }

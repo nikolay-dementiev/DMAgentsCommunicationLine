@@ -1,7 +1,7 @@
 /// The numbered schema steps of the product. Released versions never change; add a new step instead.
 public enum SchemaMigrations {
   public static let all: [Migration] = [
-    version1, version2, version3, version4, version5, version6, version7,
+    version1, version2, version3, version4, version5, version6, version7, version8,
   ]
 
   /// Version 1: stored settings and their append-only audit trail.
@@ -282,6 +282,28 @@ public enum SchemaMigrations {
       BEGIN
         UPDATE pending_counts SET count = count - 1 WHERE recipient = OLD.recipient;
       END
+      """,
+    ])
+
+  /// Version 8: the read-only credential of a program that watches the service. It has a table of
+  /// its own because it is not a principal, and `credentials` ties every non-owner credential to
+  /// one. At most one is live; issuing a new one revokes the one before, which stays as a row so
+  /// that its token is reported as revoked and not as unknown.
+  private static let version8 = Migration(
+    version: 8,
+    statements: [
+      """
+      CREATE TABLE observer_credential (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL DEFAULT 'observer' CHECK (kind = 'observer'),
+        digest TEXT NOT NULL UNIQUE CHECK (length(digest) = 64),
+        issued_at_ms INTEGER NOT NULL,
+        revoked_at_ms INTEGER
+      )
+      """,
+      """
+      CREATE UNIQUE INDEX observer_credential_one_live ON observer_credential (kind)
+      WHERE revoked_at_ms IS NULL
       """,
     ])
 }

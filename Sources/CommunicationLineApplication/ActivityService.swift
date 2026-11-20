@@ -62,6 +62,7 @@ public struct ActivityService {
     do {
       switch try identity.authenticate(token) {
       case .owner: return .owner
+      case .observer: return .observer
       case .principal(let principal): return .principal(principal.id)
       }
     } catch IdentityError.unknownToken, IdentityError.tokenRevoked, IdentityError.principalDisabled

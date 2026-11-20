@@ -33,6 +33,7 @@ public protocol Authenticating {
 
 public enum StoredCredentialKind: Equatable, Sendable {
   case owner
+  case observer
   case principal(PrincipalID)
 }
 
@@ -67,6 +68,12 @@ public protocol IdentityStore {
   func insertPrincipalCredential(digest: TokenDigest, for id: PrincipalID, at instant: Date) throws
   func credential(digest: TokenDigest) throws -> StoredCredential?
   func hasActiveOwnerCredential() throws -> Bool
+
+  /// Makes `digest` the one live observer credential; the one before it, if any, stops working.
+  func replaceObserverCredential(with digest: TokenDigest, at instant: Date) throws
+
+  /// Revokes the live observer credential. Nothing to revoke is not an error.
+  func revokeObserverCredential(at instant: Date) throws
 
   /// Replaces the owner credential in one transaction. `expectedCurrent` is the digest of the owner
   /// credential the caller authenticated with, or nil when the caller expects that none exists.

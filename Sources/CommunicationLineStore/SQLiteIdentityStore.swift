@@ -84,7 +84,7 @@ public final class SQLiteIdentityStore: IdentityStore {
     let rows = try store.database.rows(
       "SELECT kind, principal_id, revoked_at_ms FROM credentials WHERE digest = ?1",
       [.text(digest.hex)])
-    guard let row = rows.first else { return nil }
+    guard let row = rows.first else { return try observerCredential(digest: digest) }
     guard case .text(let kindName) = row[0] else {
       throw StoreError.invalidStoredIdentity("credential kind")
     }
@@ -95,6 +95,32 @@ public final class SQLiteIdentityStore: IdentityStore {
     default: throw StoreError.invalidStoredIdentity("credential kind \(kindName)")
     }
     return StoredCredential(digest: digest, kind: kind, isRevoked: row[2] != .null)
+  }
+
+  private func observerCredential(digest: TokenDigest) throws -> StoredCredential? {
+    let rows = try store.database.rows(
+      "SELECT revoked_at_ms FROM observer_credential WHERE digest = ?1", [.text(digest.hex)])
+    guard let row = rows.first else { return nil }
+    return StoredCredential(digest: digest, kind: .observer, isRevoked: row[0] != .null)
+  }
+
+  public func replaceObserverCredential(with digest: TokenDigest, at instant: Date) throws {
+    let milliseconds = try StoreTime.milliseconds(of: instant)
+    try store.database.transaction {
+      try store.database.execute(
+        "UPDATE observer_credential SET revoked_at_ms = ?1 WHERE revoked_at_ms IS NULL",
+        [.integer(milliseconds)])
+      try store.database.execute(
+        "INSERT INTO observer_credential (digest, issued_at_ms) VALUES (?1, ?2)",
+        [.text(digest.hex), .integer(milliseconds)])
+    }
+  }
+
+  public func revokeObserverCredential(at instant: Date) throws {
+    let milliseconds = try StoreTime.milliseconds(of: instant)
+    try store.database.execute(
+      "UPDATE observer_credential SET revoked_at_ms = ?1 WHERE revoked_at_ms IS NULL",
+      [.integer(milliseconds)])
   }
 
   public func hasActiveOwnerCredential() throws -> Bool {

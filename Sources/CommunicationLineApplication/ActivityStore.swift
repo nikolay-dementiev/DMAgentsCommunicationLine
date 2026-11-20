@@ -4,6 +4,8 @@ import Foundation
 /// Who made a request, as far as the service could tell.
 public enum ActivityActor: Equatable, Sendable {
   case owner
+  /// The read-only credential of a program that watches the service.
+  case observer
   case principal(PrincipalID)
   case unauthenticated
 }

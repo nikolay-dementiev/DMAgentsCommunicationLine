@@ -41,6 +41,7 @@ public final class SQLiteActivityStore: ActivityStore {
   private static func encode(_ actor: ActivityActor) -> String {
     switch actor {
     case .owner: return "owner"
+    case .observer: return "observer"
     case .unauthenticated: return "unauthenticated"
     case .principal(let id): return "principal:" + id.rawValue
     }
@@ -49,6 +50,7 @@ public final class SQLiteActivityStore: ActivityStore {
   private static func decode(actor text: String) throws -> ActivityActor {
     switch text {
     case "owner": return .owner
+    case "observer": return .observer
     case "unauthenticated": return .unauthenticated
     default:
       guard text.hasPrefix("principal:") else { throw StoreError.invalidStoredActivity }

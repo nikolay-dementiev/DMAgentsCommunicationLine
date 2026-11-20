@@ -95,6 +95,7 @@ enum WireMapping {
     let actor: String
     switch record.actor {
     case .owner: actor = "owner"
+    case .observer: actor = "observer"
     case .unauthenticated: actor = "unauthenticated"
     case .principal(let id): actor = "principal:" + id.rawValue
     }
