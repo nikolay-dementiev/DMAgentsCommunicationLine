@@ -72,6 +72,48 @@ struct OwnerReserveTests {
     #expect(health.isSuccess, "the owner still gets in while agents hold every other slot")
   }
 
+  @Test func test_idleConnectionsHoldingEveryOtherPlace_doNotKeepTheOwnerOut() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    // The request deadline is long: the idle sockets stay for the whole test.
+    let host = try ServiceHost.start(
+      storeFolder: folder, requestTimeout: 120, connectionLimit: 4, ownerReserve: 2,
+      requestDeadline: 120)
+    defer { host.stop() }
+    let owner = try field("token", of: try ask(host, "owner.credential"))
+    // Sockets that never send a request, more than the limit allows.
+    let idle = try (0..<6).map { _ in try UnixSocketClient.connect(path: host.socketPath) }
+    defer { idle.forEach { $0.close() } }
+
+    let health = try SocketExchange.call(
+      socketPath: host.socketPath, request: WireRequest(token: owner, operation: "health"),
+      maximumFrame: host.frameMaximum, deadline: Date().addingTimeInterval(60))
+
+    #expect(health.isSuccess, "the owner's first request is served while a reserve place is free")
+  }
+
+  @Test func test_anAgentRequestOnAReserveConnection_isRefusedAtOnce() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(
+      storeFolder: folder, requestTimeout: 120, connectionLimit: 4, ownerReserve: 2,
+      requestDeadline: 120)
+    defer { host.stop() }
+    let owner = try field("token", of: try ask(host, "owner.credential"))
+    let agent = try agent(on: host, owner: owner, name: "a")
+    let idle = try (0..<4).map { _ in try UnixSocketClient.connect(path: host.socketPath) }
+    defer { idle.forEach { $0.close() } }
+
+    let refused = try SocketExchange.call(
+      socketPath: host.socketPath,
+      request: WireRequest(token: agent.token, operation: "wait", arguments: ["timeout": .integer(1)]),
+      maximumFrame: host.frameMaximum, deadline: Date().addingTimeInterval(60))
+
+    #expect(
+      refused.failure?.code == .tooManyConnections,
+      "an agent never takes a place kept for the owner")
+  }
+
   @Test func test_aClientThatNeverReadsItsResponse_isCutOffAtTheDeadline() throws {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
