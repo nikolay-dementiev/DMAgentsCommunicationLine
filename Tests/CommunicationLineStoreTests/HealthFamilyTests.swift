@@ -36,6 +36,9 @@ private struct FixedListening: ListeningRegistry {
         store: SQLiteHealthStore(store: store), settings: world.settings,
         storage: StorageService(store: SQLiteStorageStore(store: store), settings: world.settings),
         cleanup: cleanup, identity: world.identity.service,
+        directory: DirectoryService(
+          store: SQLiteDirectoryStore(store: store), identity: world.identity.service,
+          listening: FixedListening(principals: listening)),
         listening: FixedListening(principals: listening), clock: world.clock,
         startedAt: world.clock.now())
     }

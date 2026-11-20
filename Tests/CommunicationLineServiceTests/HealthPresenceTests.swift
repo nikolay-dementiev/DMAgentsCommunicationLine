@@ -113,14 +113,11 @@ struct HealthPresenceTests {
     try waitUntilListening(world, world.alpha.id)
     world.fixture.clock.advance(seconds: 10)
     let second = park(world, token: world.alpha.token)
-    // A principal may keep two waits: a third is refused, which shows that both are parked.
-    let deadline = Date().addingTimeInterval(10)
-    var refused = false
-    while !refused {
-      try #require(Date() < deadline, "the second wait never parked")
-      let third = world.fixture.call("wait", token: world.alpha.token, ["timeout": .integer(1)])
-      refused = third.failure?.code == .tooManyWaiters
-    }
+    // A wait that is still running 0.3 s after it started has parked: it would have ended at once
+    // with too_many_waiters, or with mail, otherwise. Nothing else shows a second wait of the
+    // same principal, and probing with a third wait would take the place that second one needs.
+    Thread.sleep(forTimeInterval: 0.3)
+    try #require(second.wait(timeout: .now()) == .timedOut, "the second wait is still parked")
 
     let items = try principals(world.fixture.call("health", token: world.owner))
 

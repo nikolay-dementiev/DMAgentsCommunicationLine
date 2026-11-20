@@ -88,13 +88,13 @@ public final class ServiceRuntime {
         store: SQLiteRetentionStore(store: store), settings: settings, transactions: transactions,
         clock: clock),
       clock: clock)
+    let directory = DirectoryService(
+      store: SQLiteDirectoryStore(store: store), identity: identity, listening: waitQuota)
     let health = HealthService(
       store: SQLiteHealthStore(store: store), settings: settings,
       storage: storage,
-      cleanup: cleanup, identity: identity, listening: waitQuota, clock: clock,
-      startedAt: clock.now())
-    let directory = DirectoryService(
-      store: SQLiteDirectoryStore(store: store), identity: identity, listening: waitQuota)
+      cleanup: cleanup, identity: identity, directory: directory, listening: waitQuota,
+      clock: clock, startedAt: clock.now())
     let dispatcher = RequestDispatcher(
       identity: identity, rights: rights, settings: settings, messages: messages,
       activity: activity, cleanup: cleanup, health: health, directory: directory,

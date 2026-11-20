@@ -83,6 +83,8 @@ public struct HealthReport: Equatable, Sendable {
   public let overdueCount: Int
   public let overdue: [OverdueDelivery]
   public let storage: StorageStatus
+  /// Every principal with its mail and presence, as `principal.list` shows them.
+  public let principals: [PrincipalListing]
   public let warnings: [HealthWarning]
   public let lastCleanup: CleanupReport?
 }
@@ -106,15 +108,17 @@ public struct HealthService {
   private let storage: StorageService
   private let cleanup: CleanupRunner
   private let identity: IdentityService
+  private let directory: DirectoryService
   private let listening: any ListeningRegistry
   private let clock: any WallClock
   private let startedAt: Date
 
   public init(
     store: any HealthStore, settings: SettingsService, storage: StorageService,
-    cleanup: CleanupRunner, identity: IdentityService, listening: any ListeningRegistry,
-    clock: any WallClock, startedAt: Date
+    cleanup: CleanupRunner, identity: IdentityService, directory: DirectoryService,
+    listening: any ListeningRegistry, clock: any WallClock, startedAt: Date
   ) {
+    self.directory = directory
     self.listening = listening
     self.store = store
     self.settings = settings
@@ -141,6 +145,8 @@ public struct HealthService {
     let status = try storage.status()
     let listeners = listening.listeningPrincipals()
     let lastCleanup = cleanup.latest
+    // The same read as `principal.list`, so the two never disagree about who is listening.
+    let principals = try directory.principals(family: family, ownerToken: ownerToken)
     return HealthReport(
       startedAt: startedAt,
       pending: recipients.map { PendingCount(principal: $0.principal, count: $0.count) },
@@ -150,7 +156,7 @@ public struct HealthService {
         OverdueDelivery(
           message: entry.message, recipient: entry.recipient,
           age: Int(now.timeIntervalSince(entry.createdAt)))
-      }, storage: status,
+      }, storage: status, principals: principals,
       warnings: (status.isWarning ? [.storageBudget] : [])
         + (status.isRefusing ? [.storageFull] : [])
         + (lastCleanup?.isRecorded == false ? [.cleanupNotRecorded] : []),

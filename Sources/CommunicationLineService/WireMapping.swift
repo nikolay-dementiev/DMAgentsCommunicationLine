@@ -132,6 +132,7 @@ enum WireMapping {
         "warning_percent": .integer(Int64(report.storage.warningPercent)),
         "refusal_percent": .integer(Int64(report.storage.refusalPercent)),
       ]),
+      "principals": .array(report.principals.map(listing)),
       "warnings": .array(report.warnings.map { .string($0.rawValue) }),
       "last_cleanup": report.lastCleanup.map(cleanup) ?? .null,
     ])
