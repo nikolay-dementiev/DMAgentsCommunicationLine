@@ -105,8 +105,13 @@ enum WireMapping {
     ])
   }
 
+  /// The version of the health document, described in docs/health.md. Within a version fields are
+  /// only added; renaming, removing or retyping one needs the next version.
+  static let healthDocumentVersion: Int64 = 1
+
   static func health(_ report: HealthReport) -> WireValue {
     .object([
+      "version": .integer(healthDocumentVersion),
       "started_at_ms": milliseconds(report.startedAt),
       "pending": .array(
         report.pending.map {

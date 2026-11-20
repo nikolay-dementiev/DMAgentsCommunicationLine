@@ -250,7 +250,10 @@ public struct CommandRunner {
     do {
       response = try connect(socket).exchange(request)
     } catch ServiceConnectionError.unreachable(let reason) {
-      standardError("commline: the service is not reachable: \(reason)")
+      standardError(
+        asJSON
+          ? Renderer.unreachableJSON(reason: reason, encode: encode)
+          : "commline: the service is not reachable: \(reason)")
       return CommandExitStatus.unreachable.rawValue
     } catch ServiceConnectionError.invalidResponse {
       standardError("commline: the service answered with something that is not a response")

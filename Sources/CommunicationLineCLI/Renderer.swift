@@ -20,6 +20,16 @@ enum Renderer {
       ?? "commline: \(failure.code.rawValue): \(failure.message)"
   }
 
+  /// The JSON for standard error when no service answers. The code belongs to the command line, not
+  /// to the wire: the service sent nothing. When even this cannot be encoded the sentence is used.
+  static func unreachableJSON(reason: String, encode: (WireValue) throws -> Data) -> String {
+    let message = "the service is not reachable: \(reason)"
+    let body = WireValue.object([
+      "error": .object(["code": .string("service_unreachable"), "message": .string(message)])
+    ])
+    return (try? json(body, encode: encode)) ?? "commline: \(message)"
+  }
+
   /// The lines to print for a successful result.
   static func text(_ result: WireValue, as presentation: Presentation) -> [String] {
     let fields: [String: WireValue]
