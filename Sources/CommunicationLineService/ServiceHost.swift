@@ -33,7 +33,10 @@ public final class ServiceHost: @unchecked Sendable {
   private let reporter: any FailureReporter
   private let cleanupInterval: TimeInterval
   private let connectionLimit: Int
+  /// Places kept for the owner: at most `connectionLimit - 1`, so that agents always have one.
   private let ownerReserve: Int
+  /// How many connections may be served at once without being in the reserve.
+  private var agentShare: Int { connectionLimit - ownerReserve }
   private let requestDeadline: TimeInterval
   private let state = NSCondition()
   private var isStopped = false
@@ -43,11 +46,13 @@ public final class ServiceHost: @unchecked Sendable {
   /// the connection so that a late deadline never touches a descriptor that was reused.
   private var awaitingRequest: [Int32: UInt64] = [:]
   private var connectionCounter: UInt64 = 0
-  /// Connections that are serving an agent request, a parked wait included.
-  private var agentConnections = 0
-  /// Connections accepted past the limit, only to be answered with too_many_connections. They are
-  /// also in `activeConnections`, so that `stop()` reaches them.
+  /// Connections accepted past the agent share. They are held only to read their first request:
+  /// an owner request may take one of the reserve places for its length, anything else is
+  /// answered with too_many_connections. They are also in `activeConnections`, so that `stop()`
+  /// reaches them.
   private var refusedConnections: Set<Int32> = []
+  /// Owner requests being served on such connections.
+  private var reserveInUse = 0
   /// How many connections past the limit are held at a time; the budget of descriptors allows it.
   private static let refusalSlack = 16
 
@@ -59,7 +64,7 @@ public final class ServiceHost: @unchecked Sendable {
   ) {
     self.cleanupInterval = cleanupInterval
     self.connectionLimit = connectionLimit
-    self.ownerReserve = ownerReserve
+    self.ownerReserve = min(max(ownerReserve, 0), max(connectionLimit - 1, 0))
     self.requestDeadline = requestDeadline
     self.runtime = runtime
     self.lock = lock
@@ -236,7 +241,7 @@ public final class ServiceHost: @unchecked Sendable {
       }
       // A connection past the limit is kept only long enough to read its request and answer it
       // with too_many_connections, and only a few of them at a time; further ones are closed.
-      let isRefused = activeConnections.count - refusedConnections.count >= connectionLimit
+      let isRefused = activeConnections.count - refusedConnections.count >= agentShare
       guard !isRefused || refusedConnections.count < Self.refusalSlack else {
         state.unlock()
         close(connection)
@@ -302,9 +307,7 @@ public final class ServiceHost: @unchecked Sendable {
       requestFinished(descriptor)
       guard let payload else { return }
       if isRefused(descriptor) {
-        response = .failure(
-          code: .tooManyConnections,
-          message: "the service has no free connection; try again shortly")
+        response = answerOnReserve(payload)
       } else {
         guard let answered = answer(payload, over: descriptor) else { return }
         response = answered
@@ -391,15 +394,6 @@ public final class ServiceHost: @unchecked Sendable {
     } catch {
       return .failure(code: .badRequest, message: "the frame is not a request")
     }
-    let isAgentRequest = Self.agentOperations.contains(request.operation)
-    if isAgentRequest {
-      guard admitAgentRequest() else {
-        return .failure(
-          code: .tooManyConnections,
-          message: "the service keeps its last connections for the owner")
-      }
-    }
-    defer { if isAgentRequest { releaseAgentRequest() } }
     guard request.operation == "wait" else { return runtime.dispatcher.handle(request) }
     let cancellation = WaitCancellation()
     let watcher = watchForDisconnect(of: descriptor, cancelling: cancellation)
@@ -413,19 +407,30 @@ public final class ServiceHost: @unchecked Sendable {
     "send", "inbox", "read", "acknowledge", "wait",
   ]
 
-  /// Agents may hold the connection limit minus the owner reserve, and always at least one.
-  private func admitAgentRequest() -> Bool {
-    let reserve = min(max(ownerReserve, 0), max(connectionLimit - 1, 0))
+  /// The answer on a connection accepted past the agent share. Only an owner request may use a
+  /// reserve place, and only while one is free; an agent never does, so a flood of agents or of
+  /// idle sockets cannot keep the owner out for longer than the request deadline.
+  private func answerOnReserve(_ payload: Data) -> WireResponse {
+    let refusal = WireResponse.failure(
+      code: .tooManyConnections, message: "the service has no free connection; try again shortly")
+    guard let request = try? WireCoding.decodeRequest(payload),
+      !Self.agentOperations.contains(request.operation), takeReservePlace()
+    else { return refusal }
+    defer { releaseReservePlace() }
+    return runtime.dispatcher.handle(request)
+  }
+
+  private func takeReservePlace() -> Bool {
     state.lock()
     defer { state.unlock() }
-    guard agentConnections < connectionLimit - reserve else { return false }
-    agentConnections += 1
+    guard reserveInUse < ownerReserve else { return false }
+    reserveInUse += 1
     return true
   }
 
-  private func releaseAgentRequest() {
+  private func releaseReservePlace() {
     state.lock()
-    agentConnections -= 1
+    reserveInUse -= 1
     state.unlock()
   }
 

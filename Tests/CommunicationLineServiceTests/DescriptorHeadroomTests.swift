@@ -49,7 +49,8 @@ struct DescriptorHeadroomTests {
     defer { try? FileManager.default.removeItem(at: folder) }
     let reporter = SpyReporter()
     let host = try ServiceHost.start(
-      storeFolder: folder, requestTimeout: 120, reporter: reporter, descriptors: limits(fitting: 2))
+      storeFolder: folder, requestTimeout: 120, reporter: reporter, ownerReserve: 0,
+      descriptors: limits(fitting: 2))
     defer { host.stop() }
     let first = try UnixSocketClient.connect(path: host.socketPath)
     let second = try UnixSocketClient.connect(path: host.socketPath)

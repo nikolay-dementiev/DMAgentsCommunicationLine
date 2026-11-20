@@ -435,7 +435,7 @@ struct ConnectionLimitTests {
   @Test func test_aConnectionPastTheLimit_isAnsweredAtOnce_andAFreedPlaceIsUsable() throws {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
-    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 120, connectionLimit: 2)
+    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 120, connectionLimit: 2, ownerReserve: 0)
     defer { host.stop() }
     let first = try UnixSocketClient.connect(path: host.socketPath)
     let second = try UnixSocketClient.connect(path: host.socketPath)
