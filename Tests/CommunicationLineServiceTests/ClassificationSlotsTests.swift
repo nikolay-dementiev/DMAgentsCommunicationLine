@@ -70,4 +70,30 @@ struct ClassificationSlotsTests {
     #expect(read?.isEmpty == true, "the service closed the connection that had sent nothing")
     #expect(elapsed < 10, "it was closed after \(elapsed) s, not at the 120 s request deadline")
   }
+
+  @Test func test_whenTheClassificationPlacesAreFull_theOldestSilentConnectionIsTheOneClosed()
+    throws
+  {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    // The deadlines are long: only the eviction can close a connection during the test.
+    let host = try ServiceHost.start(
+      storeFolder: folder, requestTimeout: 120, connectionLimit: 2, ownerReserve: 1,
+      requestDeadline: 120, classificationDeadline: 120)
+    defer { host.stop() }
+    // The first silent connection takes the one agent place; the rest are only being classified.
+    let holder = try UnixSocketClient.connect(path: host.socketPath)
+    defer { holder.close() }
+    // The listen queue is first in, first out, so the service takes these up in this order: sixteen
+    // fill the classification places, the seventeenth finds them full.
+    let silent = try (0..<17).map { _ in try UnixSocketClient.connect(path: host.socketPath) }
+    defer { silent.forEach { $0.close() } }
+
+    var watched = silent.map { pollfd(fd: $0.descriptor, events: Int16(POLLIN), revents: 0) }
+    let ready = poll(&watched, nfds_t(watched.count), 10_000)
+    let closed = watched.indices.filter { watched[$0].revents != 0 }
+
+    #expect(ready > 0, "the service closed a connection to make room")
+    #expect(closed == [0], "only the connection that waited longest was closed: \(closed)")
+  }
 }
