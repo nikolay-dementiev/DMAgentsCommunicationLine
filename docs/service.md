@@ -87,6 +87,9 @@ not a response. Messages are for people; scripts test `code`.
 
 Instants are whole milliseconds since 1970. "Owner" means the owner token is required (`owner_required`
 otherwise). "Any" means a principal token; the owner token is refused by the message operations.
+"Owner or observer" means the owner token or the read-only observer token (see [access](access.md)); an
+observer is refused every operation that is not marked so, with a permission error (`owner_required` or
+`agent_required`).
 
 | `op` | Who | Arguments | Result |
 |---|---|---|---|
@@ -97,7 +100,7 @@ otherwise). "Any" means a principal token; the owner token is refused by the mes
 | `wait` | any | `timeout` optional, seconds, at least 0 | `outcome`: `mail` or `timeout` |
 | `owner.credential` | none or owner | none | `token`. Without a token it issues the first owner credential; with the current owner token it replaces it |
 | `principal.create` | owner | `family`, `role` (`head` or `agent`), `name` | `id`, `family`, `role`, `name`, `enabled` |
-| `principal.list` | owner | `family` optional | `principals` (list of `id`, `family`, `role`, `name`, `enabled`, `pending`, `listening_since_ms`, which is `null` when no `wait` of the principal is parked). Sorted by family, role, name. `unknown_family` when `family` has no principal |
+| `principal.list` | owner or observer | `family` optional | `principals` (list of `id`, `family`, `role`, `name`, `enabled`, `pending`, `listening_since_ms`, which is `null` when no `wait` of the principal is parked). Sorted by family, role, name. `unknown_family` when `family` has no principal |
 | `principal.disable` | owner | `principal` | empty |
 | `principal.enable` | owner | `principal` | empty. A no-op for an enabled principal; a disabled one needs a new credential |
 | `credential.issue` | owner | `principal` | `token` (shown once) |
@@ -109,8 +112,10 @@ otherwise). "Any" means a principal token; the owner token is refused by the mes
 | `setting.get` | any, or owner | `key` | `key`, `value` (the value that applies to the caller) |
 | `setting.set` | owner | `key`, `value`, `scope` optional (default `global`), `subject` for `family` and `principal` | `key` |
 | `activity.list` | owner | `after` optional cursor (the id of the last record seen), `limit` optional, 1 to `messaging.page_size` | `records` (list of `id`, `at_ms`, `actor`, `operation`, `outcome`, `targets`), `next` (cursor, absent on the last page) |
-| `health` | owner | `family` optional: `pending`, `overdue` and `not_listening_with_pending` keep only that family's recipients; `unknown_family` when it has no principal | See [Health report](#health-report) |
+| `health` | owner or observer | `family` optional: `pending`, `overdue`, `not_listening_with_pending` and `principals` keep only that family's recipients; `unknown_family` when it has no principal | The [health document](health.md), a stable contract |
 | `health.cleanup` | owner | none | `deliveries`, `messages`, `activity`: how many rows the run deleted |
+| `observer.issue` | owner | none | `token` (shown once). Replaces the observer token that was issued before |
+| `observer.revoke` | owner | none | empty. Succeeds when no observer token exists |
 
 `wait` blocks the connection. It returns `mail` as soon as the caller has pending mail (also mail that
 was pending when it was called) and `timeout` when the time runs out. The time is capped by
@@ -175,22 +180,13 @@ health report; the memory lasts as long as the process. The run is committed fir
 
 ## Health report
 
-`health` is for the owner and needs no agent session. Its result:
+`health` is for the owner and for the observer, and needs no agent session. Its result is the
+[health document](health.md), version 1: every field, its type and the stability rule are listed there and
+checked by a test. `health.threshold` applies per recipient: the principal's own value, then its family's,
+then the global one. An acknowledged delivery is never overdue.
 
-| Field | Meaning |
-|---|---|
-| `started_at_ms` | When the service started |
-| `pending` | List of `principal` and `count`, for principals with pending mail |
-| `not_listening_with_pending` | How many principals have pending mail and no `wait` parked for them (see `principal.list`; the state is in memory only) |
-| `overdue_count` | All deliveries pending longer than `health.threshold` |
-| `overdue` | The oldest `messaging.page_size` of them: `message`, `recipient`, `age_seconds` |
-| `storage` | `used_bytes` (pages in use, not the free ones), `budget_bytes`, `warning_percent` |
-| `storage` also holds | `refusal_percent`: from this share of `budget_bytes` on, `send` is refused with `storage_full` |
-| `warnings` | `storage_budget` while `used_bytes` is at or past `warning_percent` of `budget_bytes`; `storage_full` while `used_bytes` is at or past `refusal_percent`; `cleanup_not_recorded` while the last cleanup ran but its activity record could not be written. They follow the current state, so the first two clear by themselves when cleanup frees space and the third as soon as any later cleanup, scheduled or asked for, completes |
-| `last_cleanup` | `null`, or `at_ms` and `ok`; when `ok`, also `deliveries`, `messages`, `activity` |
-
-`health.threshold` applies per recipient: the principal's own value, then its family's, then the global one. An
-acknowledged delivery is never overdue.
+With no service listening, `commline health --json` fails at once with exit status 3 and an error document;
+see [health](health.md#when-the-service-is-not-there).
 
 ## Limits
 
@@ -212,7 +208,9 @@ The service raises its soft limit of open files (`RLIMIT_NOFILE`) at start as fa
 
 A connection past the limit is accepted only to be refused: the service reads its request and answers `too_many_connections` at once, so the client learns the reason instead of seeing a closed socket. A small number of such refusals is held at a time; beyond it the connection is closed without an answer.
 
-Owner reserve. `limits.connections` places are shared in two parts: `limits.connections` minus `limits.connections.owner_reserve` places for any connection, and the reserve. A connection that arrives when the first part is taken is held only to read its first request. If that request is an owner request (not `send`, `inbox`, `read`, `acknowledge` or `wait`) and a reserve place is free, it is served and the place is given back afterwards; any other request is answered `too_many_connections` at once, and a connection that sends nothing is closed at `service.request_deadline`. Idle connections therefore never hold a reserve place, because a place is taken by a request and not by a connection. The bound: the owner gets in at once while a reserve place is free and fewer than 16 connections (minus those being served on a reserve place) wait to be classified. When all 16 are held by connections that send nothing, a new connection is closed without an answer until one of them reaches `service.request_deadline`, so the owner gets in within one request deadline unless another process keeps refilling those places for as long as it likes: that case is not covered (see Known limits). The reserve is read at start and is cut down so that at least one place is left to agents.
+Owner reserve. `limits.connections` places are shared in two parts: `limits.connections` minus `limits.connections.owner_reserve` places for any connection, and the reserve. A connection that arrives when the first part is taken is held only to read its first request, and is called unclassified until that request arrives. If the request is an owner request (not `send`, `inbox`, `read`, `acknowledge` or `wait`) and a reserve place is free, it is served and the place is given back afterwards; any other request is answered `too_many_connections` at once. Idle connections therefore never hold a reserve place, because a place is taken by a request and not by a connection. The observer's `health` and `principal.list` count as owner requests here and use a reserve place for one request; an observer `wait` is answered with a refusal and never parks.
+
+The bound for the owner. At most 16 connections are held unclassified. When a new connection arrives and all 16 are taken, the service shuts down the oldest unclassified one to make room, so a process that connects and sends nothing cannot keep the owner out: the owner's connection is admitted at once and answered within one request, after at most 0.25 s spent waiting for a closed connection to leave. A connection that sends nothing is closed after 2 seconds (or `service.request_deadline` when that is shorter). At most 32 connections past the limit are held in all; beyond that a new connection is closed without an answer. The reserve is read at start and is cut down so that at least one place is left to agents.
 
 ## Known limits
 
@@ -220,7 +218,7 @@ Owner reserve. `limits.connections` places are shared in two parts: `limits.conn
 - While a `wait` is parked the service watches the connection. When the client disconnects (end of stream or hang-up) the wait ends at once and gives back its thread, its connection place and its waiter slot; the answer is dropped and the wait is still recorded in the activity log. A client therefore must not close its sending side after the request: it sends one request and only reads until the answer.
 - Beyond a small number of connections refused at the same time the service closes the connection without an answer; the client sees it closed.
 - `limits.connections.owner_reserve` is read at start; changing it needs a restart.
-- Connections held only to be classified (at most 16) are refilled by a process that keeps connecting and sending nothing, so such a process can keep the owner out of the service for as long as it runs. Any process of the same user can do it; the service has no per-process limit.
+- A process that connects and sends nothing is shut down when it is the oldest of the 16 unclassified connections, and after 2 seconds in any case; it can still make every other new connection past the limit wait up to 0.25 s for room. The service has no per-process limit.
 - An owner request takes a reserve place for as long as it runs. The classification is by operation name before the token is checked, so a request with a made-up name or no token also takes a place briefly.
 - Health scans every pending delivery older than the moment of the call to find the overdue ones, because the
   threshold can differ per principal. The scan is bounded by the pending quota of each principal.

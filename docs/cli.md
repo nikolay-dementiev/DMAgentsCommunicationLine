@@ -22,7 +22,7 @@ writable by group or others (mode 0600). Otherwise the command stops before it c
 
 ### Commands that issue a token
 
-`owner init`, `owner rotate` and `credential issue` never print the token. A token on standard output
+`owner init`, `owner rotate`, `credential issue` and `observer issue` never print the token. A token on standard output
 ends up in a terminal scrollback, a shell history of a pipe, or a log. These commands require
 `--token-out <path>`: without it the command is a usage error (status 2) and nothing is sent. The
 program creates the file itself before it asks the service, with mode 0600, exclusively
@@ -55,6 +55,8 @@ when the service fails or answers without a token. Standard output carries only 
 | `read <message-id>` | any | Prints `From:`, `To:`, `Subject:`, an empty line and the body. Does not acknowledge |
 | `acknowledge <message-id>` | any | |
 | `agent add` | owner | `--family`, `--role head\|agent`, `--name`, `--client claude-code`, `--home`. Prints the principal id and the files written |
+| `observer issue` | owner | `--token-out <path>`. Issues the read-only observer token, which can call `health` and `principal list` only; replaces the one issued before |
+| `observer revoke` | owner | Revokes the observer token. Succeeds when none exists |
 | `wait` | any | `--timeout <seconds>`. Prints `mail` or `timeout` |
 | `wait --until-mail` | any | No time limit: repeats the cycles and reconnects after a service restart. Prints `mail` and exits 0 only when mail is pending. Not combinable with `--timeout` |
 
@@ -85,6 +87,10 @@ controls (U+202A to U+202E, U+2066 to U+2069) and the line and paragraph separat
 `\u{...}` escapes; a body keeps its line breaks and tabs. `--json` prints the text exactly.
 
 ## Health report
+
+`commline health --json` prints the [health document](health.md), a stable contract. With no service listening it exits 3 at once, without retrying, and prints `{"error":{"code":"service_unreachable","message":"..."}}` on standard error. `health` and `principal list` also accept the observer token.
+
+The text form:
 
 `commline health` prints, in this order: `started:` (milliseconds since 1970), `storage:` (bytes used of the budget
 and the warning percent), one `warning: <name>` line per active warning (`storage_budget`), one `pending: <principal>`

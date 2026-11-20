@@ -9,9 +9,17 @@ protect against a process that can read another agent's token or edit the databa
 - A token is 256 random bits from the system's secure generator, written as 43 characters of base64url
   without padding. It is returned once, when it is issued. The store keeps only its SHA-256 digest (64 hex
   characters) and the principal it belongs to.
-- Two kinds exist: the owner's credential and a principal's credential. The owner has its own kind; an agent
-  token is never accepted for an owner operation, and the owner's token is never a principal.
-- `authenticate(token)` returns the owner or the principal. Three distinct errors say why it did not:
+- Three kinds exist: the owner's credential, a principal's credential and the observer credential. The owner
+  has its own kind; an agent token is never accepted for an owner operation, and the owner's token is never a
+  principal.
+- The observer credential is for a program that is not an agent, such as a dashboard. It reads the `health`
+  document and the `principal.list` result and nothing else: every other operation is refused with a
+  permission error, and no request of an observer changes anything. It is not a principal, so it has no
+  inbox and nothing can be sent to it. The owner issues it with `commline observer issue --token-out <path>`
+  (a new one replaces the old) and takes it back with `commline observer revoke`. Its requests are recorded in
+  the activity log under the actor `observer`, a successful read included, so a dashboard that polls adds one
+  record per poll.
+- `authenticate(token)` returns the owner, the observer or the principal. Three distinct errors say why it did not:
   `unknownToken`, `principalDisabled` and `tokenRevoked`. Digests are compared in constant time.
 - The first owner credential is issued when none exists. Replacing it needs the current owner token; the old
   one is revoked. Two callers that race for the first credential, or rotate with the same token, cannot both

@@ -141,3 +141,14 @@ New and open until the v0.2 release.
 | trigger `deliveries_count_an_acknowledged` | After a delivery changes from `pending` to `acknowledged`, subtracts 1 |
 
 The migration fills `pending_counts` from the deliveries that are pending when it runs. The inbox quota reads this row inside the write transaction that stores the message, so the check and the insert cannot be separated by another writer and the quota does not scan the deliveries.
+
+## Version 8
+
+New and open until the v0.2 release.
+
+| Object | Rule |
+|---|---|
+| table `observer_credential` | One row per observer token ever issued: `id`, `kind` (always `observer`), `digest` (SHA-256 of the token, 64 hex characters, unique), `issued_at_ms` and `revoked_at_ms` (`NULL` while the token is live) |
+| index `observer_credential_one_live` | Unique on `kind` where `revoked_at_ms IS NULL`: at most one live observer token exists |
+
+The observer token is kept apart from `credentials` because every row there other than the owner's belongs to a principal, and an observer is not one: it has no family, no inbox and no id that mail can be sent to. Issuing a new observer token revokes the live one in the same transaction. Existing credentials are not touched, and a migrated database starts with no observer token.

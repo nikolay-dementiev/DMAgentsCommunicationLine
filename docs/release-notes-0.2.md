@@ -66,3 +66,27 @@ Known limits of W2:
 - Continuous integration builds with the Xcode 26.6 of the `macos-26` image (Swift 6.3). The development
   machine uses Swift 6.4; the image has no Xcode with Swift 6.4, so the code is kept buildable on 6.3 and CI
   does not select another toolchain.
+
+## W3: a stable health document and a read-only token
+
+A program that is not an agent can watch the system.
+
+- The health document is version 1 and a contract: [health](health.md) lists every field. Within the version
+  fields are only added; a test compares the document with that page in both directions. New fields: `version`
+  and `principals` (the same entries as `principal list`, so a dashboard needs one call).
+- Presence: each principal in the document shows `listening_since_ms`, the start of its oldest parked `wait`, or
+  `null`.
+- `commline health --json` with no service listening exits 3 at once, without retrying, with
+  `{"error":{"code":"service_unreachable",...}}` on standard error.
+- The observer credential: `commline observer issue --token-out <path>` and `commline observer revoke`. The token
+  reads `health` and `principal list` and nothing else; it is not a principal. Wire: `observer.issue`,
+  `observer.revoke`. Schema version 8 adds the table `observer_credential`.
+- The owner can always reach the service: a connection that sends nothing is closed after 2 seconds and, when 16
+  of them are waiting, the oldest is shut down for a newcomer, so a process that opens connections and stays silent
+  no longer keeps the owner out (this closes the W2 limit on connections held to be classified). At most 32
+  connections past the limit are held (16 before).
+- The agent share of the connection places is pinned by a test: with the default reserve, agents can park only
+  `limits.connections` minus `limits.connections.owner_reserve` waits.
+
+No new error codes and no new settings keys. Every request of an observer is recorded in the activity log under
+the actor `observer`, a successful read included. Contracts stay open until the 0.2 release.
