@@ -106,6 +106,34 @@ struct OwnerReserveTests {
     #expect(health.isSuccess, "the owner still gets in")
   }
 
+  @Test func test_anObserver_readsHealthPastTheAgentShare_andNeverParks() throws {
+    let folder = shortFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let host = try ServiceHost.start(
+      storeFolder: folder, requestTimeout: 30, connectionLimit: 4, ownerReserve: 2)
+    defer { host.stop() }
+    let owner = try field("token", of: try ask(host, "owner.credential"))
+    let observer = try field("token", of: try ask(host, "observer.issue", token: owner))
+    let agents = try ["a", "b"].map { try agent(on: host, owner: owner, name: $0) }
+    let parked = try agents.map { try park(host, token: $0.token) }
+    defer { parked.forEach { $0.close() } }
+    #expect(host.waitUntilParked(ownerToken: owner, count: 2), "the agents hold every agent place")
+
+    let reads = try (0..<8).map { _ in try ask(host, "health", token: observer) }
+    let attempt = try SocketExchange.call(
+      socketPath: host.socketPath,
+      request: WireRequest(
+        token: observer, operation: "wait", arguments: ["timeout": .integer(30)]),
+      maximumFrame: host.frameMaximum, deadline: Date().addingTimeInterval(5))
+    let health = try ask(host, "health", token: owner)
+
+    #expect(
+      reads.filter { !$0.isSuccess }.isEmpty,
+      "every observer read is served, each on a reserve place held for one request only")
+    #expect(!attempt.isSuccess, "an observer wait does not park: it is answered with a refusal")
+    #expect(health.isSuccess, "the owner still gets in")
+  }
+
   @Test func test_idleConnectionsHoldingEveryOtherPlace_doNotKeepTheOwnerOut() throws {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
