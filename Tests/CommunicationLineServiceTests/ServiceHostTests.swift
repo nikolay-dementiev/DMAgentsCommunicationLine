@@ -435,7 +435,8 @@ struct ConnectionLimitTests {
   @Test func test_aConnectionPastTheLimit_isAnsweredAtOnce_andAFreedPlaceIsUsable() throws {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
-    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 120, connectionLimit: 2, ownerReserve: 0)
+    let host = try ServiceHost.start(
+      storeFolder: folder, requestTimeout: 120, connectionLimit: 2, ownerReserve: 0)
     defer { host.stop() }
     let first = try UnixSocketClient.connect(path: host.socketPath)
     let second = try UnixSocketClient.connect(path: host.socketPath)
@@ -561,7 +562,8 @@ struct ParkedWaitDisconnectTests {
   @Test func test_aParkedWait_endsWhenItsClientDisconnects_andFreesItsConnectionPlace() throws {
     let folder = shortFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
-    let host = try ServiceHost.start(storeFolder: folder, requestTimeout: 30, connectionLimit: 2)
+    let host = try ServiceHost.start(
+      storeFolder: folder, requestTimeout: 30, connectionLimit: 2, ownerReserve: 0)
     defer { host.stop() }
     let owner = try field("token", of: try ask(host, "owner.credential"))
     let waiter = try agent(on: host, owner: owner, name: "a")

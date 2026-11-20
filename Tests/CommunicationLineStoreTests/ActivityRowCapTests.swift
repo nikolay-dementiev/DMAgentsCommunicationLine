@@ -44,7 +44,8 @@ import Testing
 
     #expect(deleted == 2, "the two older records go")
     #expect(
-      try fixture.world.count("activity") == 1, "the newest stays, so the log is never emptied by a cap")
+      try fixture.world.count("activity") == 1,
+      "the newest stays, so the log is never emptied by a cap")
   }
 
   @Test func test_overTheRowCap_cleanupDeletesTheOldestRecordsFirst() throws {

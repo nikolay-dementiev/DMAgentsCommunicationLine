@@ -106,7 +106,8 @@ struct OwnerReserveTests {
 
     let refused = try SocketExchange.call(
       socketPath: host.socketPath,
-      request: WireRequest(token: agent.token, operation: "wait", arguments: ["timeout": .integer(1)]),
+      request: WireRequest(
+        token: agent.token, operation: "wait", arguments: ["timeout": .integer(1)]),
       maximumFrame: host.frameMaximum, deadline: Date().addingTimeInterval(60))
 
     #expect(

@@ -312,7 +312,11 @@ private final class AttemptCounter: @unchecked Sendable {
 
   var count: Int { lock.withLock { attempts } }
 
-  func next() -> Int { lock.withLock { attempts += 1; return attempts } }
+  func next() -> Int {
+    lock.withLock {
+      attempts += 1; return attempts
+    }
+  }
 }
 
 private final class ResultBox: @unchecked Sendable {

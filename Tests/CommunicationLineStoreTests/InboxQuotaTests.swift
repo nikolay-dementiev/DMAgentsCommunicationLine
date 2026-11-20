@@ -64,10 +64,12 @@ import Testing
   // MARK: - The write lock
 
   @Test func test_theLastSlotOfAnInbox_goesToExactlyOneOfTwoConcurrentSenders() throws {
-    let fixture = try MessagingFixture()
+    // The two threads below touch the fixture one after the other: the first one is paused inside
+    // its transaction and the second one waits for the write lock.
+    nonisolated(unsafe) let fixture = try MessagingFixture()
     try setQuota(fixture, to: 2)
     try fixture.mail(from: fixture.alphaToken, to: fixture.alphaPeer, "one")
-    let other = try secondSender(fixture)
+    nonisolated(unsafe) let other = try secondSender(fixture)
 
     let counted = DispatchSemaphore(value: 0)
     let release = DispatchSemaphore(value: 0)

@@ -86,9 +86,10 @@ means "disabled"; the v0.1 ranges for these three start at 1.
 
 The keys added in 0.2 (W2) are v0.2 proposals and stay open until the 0.2 release:
 
-- `limits.connections.owner_reserve`: how many of `limits.connections` agents cannot take (see [service](service.md#connections-and-descriptors)). Read once, at start. Zero keeps nothing back; the service always leaves at least one place to agents.
+- `limits.connections.owner_reserve`: how many of `limits.connections` places only an owner request may use (see [service](service.md#connections-and-descriptors)). Read once, at start. Zero keeps nothing back; the service always leaves at least one place to agents.
 - `retention.activity.max_rows`: cleanup deletes the oldest activity records beyond this number, whatever their age.
 - `limits.activity.refusal_window`: a refusal with the same outcome is recorded once per window, the next record names how many were left out. Zero records every refusal.
 - `storage.refusal_percent`: from this share of `storage.budget`, `send` is refused with `storage_full`. Keep it above `storage.warning_percent` so the warning comes first; the service does not enforce the order.
 - `messaging.wait_recheck`: how often a parked wait checks that its principal may still read.
+
 The retention keys count whole days from the time of the newest acknowledgement of a message (mail: a message with several recipients is judged when all of them have acknowledged) or of the request (activity).

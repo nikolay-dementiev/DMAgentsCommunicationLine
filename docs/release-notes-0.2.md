@@ -31,8 +31,9 @@ The service keeps working with many agents, and the owner can always reach it.
 - Connections: past `limits.connections` a client is answered `too_many_connections` instead of seeing the socket
   closed. The service raises its open-file limit at start and fits `limits.connections` under it; when the
   configured number does not fit it uses the smaller one and writes a line to standard error.
-- Owner reserve: `limits.connections.owner_reserve` keeps places that only the owner's operations can use, so a
-  flood of agent requests cannot lock the owner out.
+- Owner reserve: `limits.connections.owner_reserve` keeps places that only an owner request can use, taken by a
+  request and not by a connection, so neither a flood of agent requests nor idle connections can lock the owner
+  out for longer than one request deadline.
 - Deadline: `service.request_deadline` now also bounds writing the response, so a client that does not read
   cannot hold a thread.
 - Parked waits re-check their token every `messaging.wait_recheck` seconds; a revoked or disabled token ends the
@@ -56,3 +57,12 @@ Known limits of v0.1 that this closes: no flood control for the activity log; no
 owner; no storage budget that refuses writes; parked waits not re-authenticated; the pending count not taken under
 the write lock; cleanup on a full disk (the cleanup record no longer rolls the cleanup back); the unlocked manifest
 update in `agent add`.
+
+Known limits of W2:
+
+- A refusal is recorded once per window for each outcome, not for each actor, so one noisy client can hide the
+  same outcome from another inside the window; only the count of the hidden ones is kept. Keying by actor is not
+  done in 0.2.
+- Continuous integration builds with the Xcode 26.6 of the `macos-26` image (Swift 6.3). The development
+  machine uses Swift 6.4; the image has no Xcode with Swift 6.4, so the code is kept buildable on 6.3 and CI
+  does not select another toolchain.

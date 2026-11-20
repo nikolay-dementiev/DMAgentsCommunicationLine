@@ -187,7 +187,7 @@
       "default": 8,
       "range": { "min": 0, "max": 1024 },
       "scopes": ["global"],
-      "description": "The connections kept for the owner. Agent requests, parked waits included, are refused with too_many_connections once agents hold limits.connections minus this reserve. At least one connection stays open to agents. The service reads it once, at start."
+      "description": "The connection places kept for the owner. A connection that arrives once limits.connections minus this reserve places are taken is served only for an owner request, and only while a reserve place is free; anything else is answered with too_many_connections. At least one place stays with agents. The service reads it once, at start."
     },
     {
       "key": "service.request_deadline",

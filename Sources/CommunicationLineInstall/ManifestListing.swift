@@ -11,14 +11,15 @@ public protocol ManifestListing {
 /// second one reads what the first one wrote. The folder is locked, not the manifest: replacing
 /// the manifest swaps the file, which would drop a lock held on the old one, and no lock file is
 /// left behind for uninstall to remove.
-public struct FileManifestListing: ManifestListing {
+public struct FileManifestListing: ManifestListing, Sendable {
   private let manifestURL: URL
-  private let read: (URL) throws -> Manifest
+  private let read: @Sendable (URL) throws -> Manifest
 
   /// `read` is the way the manifest is read; a test replaces it to stop between the read and the
   /// write.
   public init(
-    manifestURL: URL, read: @escaping (URL) throws -> Manifest = { try Manifest.read(from: $0) }
+    manifestURL: URL,
+    read: @escaping @Sendable (URL) throws -> Manifest = { try Manifest.read(from: $0) }
   ) {
     self.manifestURL = manifestURL
     self.read = read
