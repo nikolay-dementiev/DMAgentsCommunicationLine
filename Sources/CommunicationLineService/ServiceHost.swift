@@ -253,9 +253,12 @@ public final class ServiceHost: @unchecked Sendable {
       }
       // A connection past the limit is kept only long enough to read its request and answer it
       // with too_many_connections, and only a few of them at a time; further ones are closed.
-      let isRefused = activeConnections.count - refusedConnections.count >= agentShare
-      if isRefused && unclassified.count >= Self.refusalSlack { closeOldestUnclassified() }
-      if isRefused { waitForRoomAmongRefused() }
+      var isRefused = activeConnections.count - refusedConnections.count >= agentShare
+      if isRefused && unclassified.count >= Self.refusalSlack && closeOldestUnclassified() {
+        waitForRoomAmongRefused()
+        // The wait released the lock: a connection may have ended meanwhile and left a place.
+        isRefused = activeConnections.count - refusedConnections.count >= agentShare
+      }
       guard !isStopped, !isRefused || refusedConnections.count < Self.refusalCap else {
         state.unlock()
         close(connection)
@@ -280,14 +283,14 @@ public final class ServiceHost: @unchecked Sendable {
 
   private var cleanupLoopEnded = false
 
-  /// Runs cleanup every `cleanupInterval` until the host stops. A failed run is reported and the
-  /// next one is still attempted.
-  /// Closes the connection past the limit that has been waiting longest to send its request.
-  /// Called under the state lock, like every other touch of the connection sets.
-  private func closeOldestUnclassified() {
-    guard let oldest = unclassified.min(by: { $0.value < $1.value }) else { return }
+  /// Closes the connection past the limit that has been waiting longest to send its request, and
+  /// says whether there was one. Called under the state lock, like every other touch of the
+  /// connection sets.
+  private func closeOldestUnclassified() -> Bool {
+    guard let oldest = unclassified.min(by: { $0.value < $1.value }) else { return false }
     unclassified[oldest.key] = nil
     shutdown(oldest.key, SHUT_RDWR)
+    return true
   }
 
   /// A connection that was just closed to make room leaves `refusedConnections` when its thread
@@ -302,6 +305,8 @@ public final class ServiceHost: @unchecked Sendable {
     }
   }
 
+  /// Runs cleanup every `cleanupInterval` until the host stops. A failed run is reported and the
+  /// next one is still attempted.
   private func cleanupLoop() {
     state.lock()
     while !isStopped {
