@@ -98,7 +98,7 @@ The activity log. New and open until the v0.1 release.
 | `activity` | `id` (integer primary key, autoincrement, so the order of the log), `at_ms`, `actor`, `operation`, `outcome`, `targets` | Append-only: a trigger refuses every UPDATE and every INSERT that would replace a stored id (`INSERT OR REPLACE`). A DELETE is refused too unless the gate is open. The guarantee holds against the service and ordinary SQL, not against someone who can edit the file and drop triggers. |
 | `activity_retention_gate` | `id` (always 1), `open` (0 or 1) | One row. Only the retention path opens it, inside the transaction that deletes, and closes it again before the commit. |
 
-- `actor` is `owner`, `unauthenticated` or `principal:<id>`. A request whose token is missing, unknown, revoked or
+- `actor` is `owner`, `observer`, `unauthenticated` or `principal:<id>`. A request whose token is missing, unknown, revoked or
   belongs to a disabled principal is `unauthenticated`.
 - `operation` is the protocol operation name, or `unknown` for a name the service does not know (the name itself is
   never copied, because a client chose it).

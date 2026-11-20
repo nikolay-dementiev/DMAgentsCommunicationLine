@@ -159,7 +159,7 @@ Each code belongs to one class; the CLI maps the class to its exit status.
 ## Activity log
 
 Every request the service handles leaves one record: the time from the service clock, the actor (`owner`,
-`unauthenticated` or `principal:<id>`), the operation, the outcome (`ok` or the error code) and the ids it touched.
+`observer`, `unauthenticated` or `principal:<id>`), the operation, the outcome (`ok` or the error code) and the ids it touched.
 Refused and failed requests are recorded, and so are the owner credential bootstrap and its replacement. The record
 of a request that succeeds is written in the transaction of its effect; a request that fails leaves no effect and is
 recorded afterwards. A `wait` is recorded when it ends, and so is `health.cleanup`: both are recorded after their work is done, outside any transaction, so a record that cannot be written (disk full, for example) is reported on standard error and never undoes the work or the answer.

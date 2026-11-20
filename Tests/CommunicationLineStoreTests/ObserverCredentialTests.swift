@@ -116,4 +116,31 @@ struct ObserverCredentialTests {
     #expect(
       try raw.integer("SELECT count(*) FROM observer_credential") == 0, "no observer credential")
   }
+
+  @Test func test_theDatabase_refusesASecondLiveObserverRow_whateverTheCodeDoes() throws {
+    let scratch = try TemporaryDirectory()
+    _ = try SQLiteStore.open(
+      at: scratch.storePath, busyTimeoutMilliseconds: 1000, migrations: SchemaMigrations.all)
+    let raw = try RawDatabase(path: scratch.storePath)
+    let first = String(repeating: "a", count: 64)
+    let second = String(repeating: "b", count: 64)
+    try raw.execute(
+      "INSERT INTO observer_credential (digest, issued_at_ms) VALUES ('\(first)', 0)")
+
+    #expect(throws: RawDatabaseError.self) {
+      try raw.execute(
+        "INSERT INTO observer_credential (digest, issued_at_ms) VALUES ('\(second)', 0)")
+    }
+    #expect(throws: RawDatabaseError.self) {
+      try raw.execute(
+        "INSERT INTO observer_credential (digest, issued_at_ms, revoked_at_ms) VALUES ('short', 0, 1)"
+      )
+    }
+    try raw.execute("UPDATE observer_credential SET revoked_at_ms = 1")
+    try raw.execute(
+      "INSERT INTO observer_credential (digest, issued_at_ms) VALUES ('\(second)', 0)")
+    #expect(
+      try raw.integer("SELECT count(*) FROM observer_credential WHERE revoked_at_ms IS NULL") == 1,
+      "after a revocation one new live row is allowed, and only one")
+  }
 }
