@@ -63,6 +63,8 @@ public final class ServiceHost: @unchecked Sendable {
   /// How many connections past the limit are held in all, those being classified and those being
   /// answered; the budget of descriptors allows it.
   private static let refusalCap = 2 * refusalSlack
+  /// The longest the accept loop waits for a connection it closed to make room to be gone.
+  private static let roomWait: TimeInterval = 0.25
   /// How long a connection past the limit may take to send a complete request.
   private static let classificationDeadline: TimeInterval = 2
 
@@ -253,7 +255,8 @@ public final class ServiceHost: @unchecked Sendable {
       // with too_many_connections, and only a few of them at a time; further ones are closed.
       let isRefused = activeConnections.count - refusedConnections.count >= agentShare
       if isRefused && unclassified.count >= Self.refusalSlack { closeOldestUnclassified() }
-      guard !isRefused || refusedConnections.count < Self.refusalCap else {
+      if isRefused { waitForRoomAmongRefused() }
+      guard !isStopped, !isRefused || refusedConnections.count < Self.refusalCap else {
         state.unlock()
         close(connection)
         continue
@@ -285,6 +288,18 @@ public final class ServiceHost: @unchecked Sendable {
     guard let oldest = unclassified.min(by: { $0.value < $1.value }) else { return }
     unclassified[oldest.key] = nil
     shutdown(oldest.key, SHUT_RDWR)
+  }
+
+  /// A connection that was just closed to make room leaves `refusedConnections` when its thread
+  /// notices, which is at once unless the machine is busy. Waiting a moment for that keeps the
+  /// number of descriptors held for refused connections at the cap, and keeps a newcomer, the
+  /// owner among them, from being turned away because a thread has not been scheduled yet.
+  /// Called under the state lock, which the wait releases.
+  private func waitForRoomAmongRefused() {
+    let limit = Date().addingTimeInterval(Self.roomWait)
+    while refusedConnections.count >= Self.refusalCap, !isStopped, Date() < limit {
+      state.wait(until: limit)
+    }
   }
 
   private func cleanupLoop() {
