@@ -3,21 +3,24 @@ import CommunicationLineWire
 import Testing
 
 struct SocketPathTests {
-  private func openDescriptors() -> Int {
-    (try? FileManager.default.contentsOfDirectory(atPath: "/dev/fd").count) ?? -1
-  }
-
-  @Test func test_aPathThatIsTooLong_opensNoDescriptor() {
+  @Test func test_aPathThatIsTooLong_opensNoSocket() {
     let path = "/tmp/" + String(repeating: "x", count: 200)
-    let before = openDescriptors()
+    var opened = 0
 
     for _ in 0..<100 {
       #expect(throws: UnixSocketError.self, "the path is refused") {
-        _ = try UnixSocketClient.connect(path: path)
+        _ = try UnixSocketClient.connect(
+          path: path,
+          openSocket: {
+            opened += 1
+            return try UnixSocket.makeStreamSocket()
+          })
       }
     }
 
-    #expect(openDescriptors() - before < 5, "no descriptor is left behind per attempt")
+    // Counting the descriptors of the whole process would also count those that other tests open
+    // at the same time; counting the requests for a socket counts only this test's.
+    #expect(opened == 0, "no socket is even requested for a path that cannot fit")
   }
 
   @Test func test_theServiceConnection_reportsALongPathAsFinal() {

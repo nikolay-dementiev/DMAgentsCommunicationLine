@@ -162,13 +162,20 @@ private final class BackgroundWait: @unchecked Sendable {
 
   // MARK: - The in-process arrival on its own
 
+  /// Signals from a thread of its own: a signal sent from the shared dispatch pool can wait for a
+  /// free worker for as long as other tests keep the pool busy.
+  private func signalSoon(_ arrival: InProcessMailArrival, recipients: Set<PrincipalID>) {
+    Thread.detachNewThread {
+      Thread.sleep(forTimeInterval: 0.05)
+      arrival.signal(recipients: recipients)
+    }
+  }
+
   @Test func test_arrival_signalForSomeoneElse_doesNotWakeAWaiter() {
     let arrival = InProcessMailArrival()
     let waiting = PrincipalID("waiting")
     let ticket = arrival.ticket(for: waiting)
-    DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
-      arrival.signal(recipients: [PrincipalID("someone-else")])
-    }
+    signalSoon(arrival, recipients: [PrincipalID("someone-else")])
 
     #expect(
       arrival.wait(for: waiting, since: ticket, timeout: 0.4) == .timedOut,
@@ -179,9 +186,7 @@ private final class BackgroundWait: @unchecked Sendable {
     let arrival = InProcessMailArrival()
     let waiting = PrincipalID("waiting")
     let ticket = arrival.ticket(for: waiting)
-    DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
-      arrival.signal(recipients: [waiting])
-    }
+    signalSoon(arrival, recipients: [waiting])
 
     #expect(arrival.wait(for: waiting, since: ticket, timeout: 10) == .signalled, "woken")
   }

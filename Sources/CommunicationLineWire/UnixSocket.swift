@@ -131,9 +131,12 @@ public enum UnixSocketClient {
   /// Connects to the socket at `path`. With a `deadline`, the connection attempt and every later
   /// read and write on the stream stop at that moment: a service that accepts and then says
   /// nothing cannot hold the caller.
-  public static func connect(path: String, deadline: Date? = nil) throws -> FileDescriptorStream {
+  public static func connect(
+    path: String, deadline: Date? = nil,
+    openSocket: () throws -> Int32 = UnixSocket.makeStreamSocket
+  ) throws -> FileDescriptorStream {
     try UnixSocket.requireFits(path: path)
-    let descriptor = try UnixSocket.makeStreamSocket()
+    let descriptor = try openSocket()
     let flags = fcntl(descriptor, F_GETFL)
     if deadline != nil { _ = fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) }
     let result = try UnixSocket.withAddress(path: path) { Darwin.connect(descriptor, $0, $1) }

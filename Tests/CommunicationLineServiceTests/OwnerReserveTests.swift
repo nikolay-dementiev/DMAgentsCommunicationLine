@@ -201,7 +201,19 @@ struct OwnerReserveTests {
       token: reader.token, operation: "read", arguments: ["id": .string(messageID)])
     try FrameCodec(maximumSize: host.frameMaximum).writeFrame(
       try WireCoding.encode(request), to: client)
-    Thread.sleep(forTimeInterval: 1.5)
+    // The service shuts the connection down when it cuts the client; writing to it then fails.
+    // Waiting for that, not for a fixed time, keeps the test independent of how loaded the machine is.
+    let probeLimit = Date().addingTimeInterval(30)
+    var isCut = false
+    while !isCut && Date() < probeLimit {
+      do {
+        try client.write(Data([0]))
+        Thread.sleep(forTimeInterval: 0.01)
+      } catch {
+        isCut = true
+      }
+    }
+    try #require(isCut, "the service cut the client that never reads")
 
     var received = 0
     while true {
