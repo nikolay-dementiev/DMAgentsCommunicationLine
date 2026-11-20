@@ -90,3 +90,15 @@ A program that is not an agent can watch the system.
 
 No new error codes and no new settings keys. Every request of an observer is recorded in the activity log under
 the actor `observer`, a successful read included. Contracts stay open until the 0.2 release.
+- The connection deadlines (`service.request_deadline` and the classification deadline) run on a timer thread of the
+  service, not on the shared dispatch pool, so a busy or blocked pool can no longer delay a cut. Before this a
+  runner with the pool full of blocked work never cut a silent connection.
+
+Known limits of W3:
+
+- A request with any non-agent operation name takes an owner reserve place before its token is checked, so a
+  process of the same user that loops `health` can keep reserve places busy for longer than the owner's own
+  requests need. The service has no per-process limit.
+- The oldest silent connection is closed first, whoever it belongs to: under a flood the owner's own half-sent
+  request can be the one closed, and the command line then tries again.
+- `observer.issue` is serialised by the store's write lock; there is no test that runs two issues at once.
