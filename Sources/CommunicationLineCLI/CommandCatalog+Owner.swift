@@ -57,6 +57,12 @@ extension CommandCatalog {
       positionals: ["principal-id"], options: ["token-out"], presentation: .token,
       arguments: { _, positionals in ["principal": .string(positionals[0])] }),
     Command(
+      words: ["observer", "issue"], operation: "observer.issue", needsToken: true,
+      positionals: [], options: ["token-out"], presentation: .token, arguments: { _, _ in [:] }),
+    Command(
+      words: ["observer", "revoke"], operation: "observer.revoke", needsToken: true,
+      positionals: [], options: [], presentation: .acknowledged, arguments: { _, _ in [:] }),
+    Command(
       words: ["rule", "add"], operation: "rule.add", needsToken: true,
       positionals: ["from-family", "to-family"], options: [], presentation: .acknowledged,
       arguments: { _, positionals in
