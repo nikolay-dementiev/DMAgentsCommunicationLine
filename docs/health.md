@@ -37,6 +37,14 @@ A field marked `(optional)` is absent in some documents, as the meaning says.
 | `storage.budget_bytes` | integer | `storage.budget` |
 | `storage.warning_percent` | integer | From this share of the budget on, `storage_budget` is a warning |
 | `storage.refusal_percent` | integer | From this share of the budget on, `send` is refused with `storage_full` |
+| `principals` | array | Every principal (with `--family`, those of that family), sorted by family, role and name, as `principal.list` shows them |
+| `principals[].id` | string | The id of the principal |
+| `principals[].family` | string | Its family |
+| `principals[].role` | string | `agent` or `head` |
+| `principals[].name` | string | Its display name |
+| `principals[].enabled` | bool | Whether the principal may use its credentials |
+| `principals[].pending` | integer | Deliveries to it that nobody has acknowledged |
+| `principals[].listening_since_ms` | integer or null | When its oldest parked `wait` started, in milliseconds since 1970-01-01 UTC; `null` when none is parked. The state lives in the memory of the service |
 | `warnings` | array | The current warnings, which clear by themselves when the state does |
 | `warnings[]` | string (optional) | `storage_budget`, `storage_full` or `cleanup_not_recorded`; present when there is a warning |
 | `last_cleanup` | object or null | The last cleanup run since the service started; `null` before the first |
@@ -57,6 +65,9 @@ A field marked `(optional)` is absent in some documents, as the meaning says.
   "overdue_count": 1,
   "overdue": [{"message": "b3a41c0d", "recipient": "7f0c2d5e", "age_seconds": 1860}],
   "storage": {"used_bytes": 163840, "budget_bytes": 5000000000, "warning_percent": 80, "refusal_percent": 95},
+  "principals": [
+    {"id": "7f0c2d5e", "family": "ops", "role": "agent", "name": "worker", "enabled": true, "pending": 1, "listening_since_ms": null}
+  ],
   "warnings": [],
   "last_cleanup": {"at_ms": 1800000000000, "ok": true, "deliveries": 0, "messages": 0, "activity": 0}
 }
