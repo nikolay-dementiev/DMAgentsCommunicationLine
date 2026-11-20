@@ -39,6 +39,8 @@ public final class ServiceHost: @unchecked Sendable {
   private var agentShare: Int { connectionLimit - ownerReserve }
   private let requestDeadline: TimeInterval
   private let state = NSCondition()
+  /// Cuts connections at their deadlines; see `DeadlineTimer` for why it is not the shared pool.
+  private let deadlines = DeadlineTimer()
   private var isStopped = false
   private var isFinished = false
   private var activeConnections: Set<Int32> = []
@@ -163,6 +165,7 @@ public final class ServiceHost: @unchecked Sendable {
     for descriptor in activeConnections { shutdown(descriptor, SHUT_RDWR) }
     awaitIdle(for: 1)
     state.unlock()
+    deadlines.stop()
     runtime.close()
     lock.release()
     state.lock()
@@ -274,7 +277,7 @@ public final class ServiceHost: @unchecked Sendable {
       awaitingRequest[connection] = identity
       state.unlock()
       let deadline = isRefused ? min(requestDeadline, Self.classificationDeadline) : requestDeadline
-      DispatchQueue.global().asyncAfter(deadline: .now() + deadline) {
+      deadlines.schedule(after: deadline) {
         self.expireRequest(of: connection, identity: identity)
       }
       Thread.detachNewThread { self.serve(connection) }
@@ -383,7 +386,7 @@ public final class ServiceHost: @unchecked Sendable {
     let identity = connectionCounter
     awaitingRequest[descriptor] = identity
     state.unlock()
-    DispatchQueue.global().asyncAfter(deadline: .now() + requestDeadline) {
+    deadlines.schedule(after: requestDeadline) {
       self.expireRequest(of: descriptor, identity: identity)
     }
   }
